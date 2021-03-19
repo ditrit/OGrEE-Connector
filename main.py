@@ -2,7 +2,9 @@
 import requests, json
 
 #Auth Token
+token = '''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJVc2VySWQiOjYzOTUyMDYyNzE4NDI3MTM2MX0.y34Vd-KPTzDQRowqiPlXE8Nz00TvDv5D3kF838JVBVQ'''
 
+head = {'Authorization': 'Bearer {}'.format(token)}
 
 # Obtain the big list of racks
 # r = requests.get("https://dcim.chibois.net/api/dcim/racks/")
@@ -26,9 +28,19 @@ import requests, json
 
 
 ### Test with Current API @ https://api.chibois.net/api/user/
+### To check that a request is successful, 
+# use r.raise_for_status() or check r.status_code is what you expect
 
-r = requests.get("https://api.chibois.net/api/user/tenants")
-print(r.json())
+r = requests.get("https://api.chibois.net/api/user/tenants", headers=head)
+# print(r.json())
 
-'''for idx in parsed:
-    print(idx)'''
+# parsed = json.loads(r.json())
+
+""" for k in r.json():
+    print(r.json()[k]) """
+
+### print(r.json()['data'][1])
+
+### ITERATE THROUGH EACH OBJECT IN JSON RESPONSE
+for obj in r.json()['data']:
+    print(obj)
