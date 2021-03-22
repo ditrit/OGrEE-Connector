@@ -2,9 +2,13 @@
 import requests, json
 
 #Auth Token
-token = '''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJVc2VySWQiOjYzOTUyMDYyNzE4NDI3MTM2MX0.y34Vd-KPTzDQRowqiPlXE8Nz00TvDv5D3kF838JVBVQ'''
+token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJVc2VySWQiOjYzOTUyMDYyNzE4NDI3MTM2MX0.y34Vd-KPTzDQRowqiPlXE8Nz00TvDv5D3kF838JVBVQ'
 
 head = {'Authorization': 'Bearer {}'.format(token)}
+
+# URLs
+# LOCAL: http://localhost:8000/api/user/tenants
+# DCIM: https://api.chibois.net/api/dcim/racks/
 
 # Obtain the big list of racks
 # r = requests.get("https://dcim.chibois.net/api/dcim/racks/")
@@ -42,5 +46,23 @@ r = requests.get("https://api.chibois.net/api/user/tenants", headers=head)
 ### print(r.json()['data'][1])
 
 ### ITERATE THROUGH EACH OBJECT IN JSON RESPONSE
-for obj in r.json()['data']:
-    print(obj)
+'''for obj in r.json()['data']:
+    print(obj)'''
+
+
+""" r = requests.put("http://localhost:8000/api/user/tenants", headers=head,
+data=r.json()['data'][0]) """
+
+Q = r.json()['data'][1]
+Q['id'] = None
+Q['attributes']['id'] = None
+Q['attributes']['color'] = "NIL"
+Q['category'] = "THE HOTTEST DNB"
+Q['name'] = "RONI SIZE"
+
+
+print(json.dumps(Q))
+
+
+fg = requests.post('http://localhost:8000/api/user/tenants',data=json.dumps(Q), headers=head)
+print(fg)
