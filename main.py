@@ -3,8 +3,11 @@ import requests, json
 
 #Auth Token
 token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJVc2VySWQiOjYzOTUyMDYyNzE4NDI3MTM2MX0.y34Vd-KPTzDQRowqiPlXE8Nz00TvDv5D3kF838JVBVQ'
+dcim_token = '95d2a16ddb3670eecacb1018e0de484d1b8267e7'
+
 
 head = {'Authorization': 'Bearer {}'.format(token)}
+dhead = {'Authorization': 'Token {}'.format(dcim_token)}
 
 # URLs
 # LOCAL: http://localhost:8000/api/user/tenants
@@ -24,8 +27,10 @@ head = {'Authorization': 'Bearer {}'.format(token)}
 
 
 
-# Obtain the big list of tenants
-# r = requests.get("https://dcim.chibois.net/api/dcim/tenancy/tenants")
+# Obtain the big list of tenants 
+# print(dhead)
+r = requests.get("https://dcim.chibois.net/api/dcim/sites/", headers=dhead)
+print(r.json())
 # parsed = json.loads(r)
 # ITERATE THROUGH EACH ELEMENT AND SEND AN API REQUEST
 
@@ -35,7 +40,7 @@ head = {'Authorization': 'Bearer {}'.format(token)}
 ### To check that a request is successful, 
 # use r.raise_for_status() or check r.status_code is what you expect
 
-r = requests.get("https://api.chibois.net/api/user/tenants", headers=head)
+# r = requests.get("https://api.chibois.net/api/user/tenants", headers=head)
 # print(r.json())
 
 # parsed = json.loads(r.json())
@@ -53,16 +58,16 @@ r = requests.get("https://api.chibois.net/api/user/tenants", headers=head)
 """ r = requests.put("http://localhost:8000/api/user/tenants", headers=head,
 data=r.json()['data'][0]) """
 
-Q = r.json()['data'][1]
-Q['id'] = None
-Q['attributes']['id'] = None
-Q['attributes']['color'] = "NIL"
-Q['category'] = "THE HOTTEST DNB"
-Q['name'] = "RONI SIZE"
+# Q = r.json()['data'][1]
+# Q['id'] = None
+# Q['attributes']['id'] = None
+# Q['attributes']['color'] = "NIL"
+# Q['category'] = "THE HOTTEST DNB"
+# Q['name'] = "RONI SIZE"
 
 
-print(json.dumps(Q))
+# print(json.dumps(Q))
 
 
-fg = requests.post('http://localhost:8000/api/user/tenants',data=json.dumps(Q), headers=head)
-print(fg)
+# fg = requests.post('http://localhost:8000/api/user/tenants',data=json.dumps(Q), headers=head)
+# print(fg)
