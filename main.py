@@ -1,33 +1,35 @@
 #!/usr/bin/env python
 import requests, json
 
-#Auth Token
-token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJVc2VySWQiOjYzOTUyMDYyNzE4NDI3MTM2MX0.y34Vd-KPTzDQRowqiPlXE8Nz00TvDv5D3kF838JVBVQ'
-dcim_token = '95d2a16ddb3670eecacb1018e0de484d1b8267e7'
-
-
-head = {'Authorization': 'Bearer {}'.format(token)}
-dhead = {'Authorization': 'Token {}'.format(dcim_token)}
-
-# EXAION ID
-eid = 0
-siteNamebldgIDDict = {
-    "nil": None
-  }
-roomNameIDDict = {}
-
-
-# Helper func defs
-def GetRoomName(siteName, BldgID):
-  pr = requests.get(
-    "https://ogree.chibois.net/api/user/buildings/"+str(BldgID)+"/rooms",
-     headers=head, data=json.dumps(npq) )
-  return pr.json()['data']['objects'][0]['name']
-
 # URLs
 # LOCAL: http://localhost:8000/api/user/tenants
 # DCIM: https://api.chibois.net/api/dcim/racks/
 # NETBX: https://dcim.chibois.net/api/dcim/racks
+
+
+#Auth Token
+token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJVc2VySWQiOjYzOTUyMDYyNzE4NDI3MTM2MX0.y34Vd-KPTzDQRowqiPlXE8Nz00TvDv5D3kF838JVBVQ'
+dcim_token = '95d2a16ddb3670eecacb1018e0de484d1b8267e7'
+
+head = {'Authorization': 'Bearer {}'.format(token)}
+dhead = {'Authorization': 'Token {}'.format(dcim_token)}
+
+
+# EXAION ID & Maps
+eid = 0
+siteNamebldgIDDict = {}
+roomNameIDDict = {}
+
+
+# Helper func defs
+# Get a corresponding room
+# if 'group' is missing
+# in json
+def GetRoomName(siteName, BldgID):
+  pr = requests.get(
+    "https://ogree.chibois.net/api/user/buildings/"+str(BldgID)+"/rooms",
+     headers=head )
+  return pr.json()['data']['objects'][0]['name']
 
 
 #Create EXAION Tenant
@@ -58,20 +60,20 @@ elif "id" in r.json()["tenant"]:
     eid = r.json()["tenant"]["id"]
 else:
   print("this doesn't work")
-
+  
 
 # Obtain the big list of Tenants
 # Then put into OGREDB
 r = requests.get("https://dcim.chibois.net/api/tenancy/tenants/", 
 headers=dhead)
-
-for tn in r.json()['results']:
-    npq = {
-  "name": tn['name'],
+print("Number of tenants to be added: ", len(r.json()['results']))
+for tenant in r.json()['results']:
+    tenantJson = {
+  "name": tenant['name'],
   "id": None, #API doesn't allow non Server Generated IDs
   "parentId": None,
   "category": "tenant",
-  "description": [tn['description']],
+  "description": [tenant['description']],
   "domain": "Connector Domain",
   "attributes": {
     "color": "Connector Color",
@@ -80,16 +82,17 @@ for tn in r.json()['results']:
     "mainEmail": None
   }
 }
+    # Add to Cockroach
     pr = requests.post("https://ogree.chibois.net/api/user/tenants",
-     headers=head, data=json.dumps(npq) )
-    #print(pr.json())
+     headers=head, data=json.dumps(tenantJson) )
 
 
 # Obtain the big list of Sites
 # Store into Cockroach and add
 # a placeholder bldg to each site
 r = requests.get("https://dcim.chibois.net/api/dcim/sites/", headers=dhead)
-#print(r.json())
+print("Number of Sites to be added: ", len(r.json()['results']))
+print("Adding Sites...")
 for entry in r.json()['results']:
   npq = {
   "name": entry['name'],
@@ -110,12 +113,12 @@ for entry in r.json()['results']:
     "gps": None # None of the sites have coordinates
   }
 }
-  #print(json.dumps(npq))
+
   pr = requests.post("https://ogree.chibois.net/api/user/sites",
    headers=head, data=json.dumps(npq) )
-  #print(pr.json())
+
   siteID = pr.json()['data']
-  print(siteID['id'])
+  print("Adding corresponding building")
   bldgJson = {
   "name": "BldgA",
   "id": None, #API doesn't allow non Server Generated IDs
@@ -179,13 +182,10 @@ for idx in r.json()['results']:
 # corresponding ID
 r = requests.get("https://dcim.chibois.net/api/dcim/racks/",
  headers=dhead)
-print("LEN: ", len(r.json()['results']))
+print("Number of Racks to be added: ", len(r.json()['results']))
+print("Adding Racks...")
 for idx in r.json()['results']:
-  #print(idx['group'])
   if idx['group'] == None:
-    print("WE GOT A NULL!")
-    print(idx['site']['name'])
-    print(siteNamebldgIDDict[idx['site']['name']])
     name = GetRoomName(idx['site']['name'], 
       siteNamebldgIDDict[idx['site']['name']])
     pid = roomNameIDDict[name]
@@ -220,106 +220,3 @@ for idx in r.json()['results']:
   }
   tmpr = requests.post("https://ogree.chibois.net/api/user/racks",
   headers=head, data=json.dumps(rackJson) )
-  #print("ParentID: ", pid)
-
-
-
-
-
-
-# ITERATE THROUGH EACH ELEMENT AND SEND AN API REQUEST
-#for site in r.json()['results']:
-#    print("Here's a site!")
-'''
-
-
-
-
-
-
-
-
-# Obtain the big list of Devices 
-
-r = requests.get("https://dcim.chibois.net/api/dcim/devices/", headers=dhead)
-# print(r.json()['results'])
-
-for d in r.json()['results']:
-    if d['tenant'] != None:
-        print("U NOT LIKE ME")
-
-
-# Obtain the big list of Racks 
-
-r = requests.get("https://dcim.chibois.net/api/dcim/racks/", headers=dhead)
-# print(r.json()['results'])
-
-for d in r.json()['results']:
-    if d['tenant'] != None:
-        print("U NOT LIKE ME")
-
-
-
-
-
-
-
-### Test with Current API @ https://api.chibois.net/api/user/
-### To check that a request is successful, 
-# use r.raise_for_status() or check r.status_code is what you expect
-
-
-
-#Site Attributes
-#'''
-#    "orientation": "NW",
-#    "usableColor": "ExaionColor",
-#    "reservedColor": "ExaionColor",
-#    "technicalColor": "ExaionColor",
-#    "address": None,
-#    "zipcode": None,
-#    "city": None,
-#    "country": None,
-#    "gps": None
-#'''
-
-
-'''
-           "id": 4,
-            "name": "D51",
-            "slug": "d51",
-            "status": {
-                "value": "active",
-                "label": "Active",
-                "id": 1
-            },
-            "region": {
-                "id": 1,
-                "url": "https://dcim.chibois.net/api/dcim/regions/1/",
-                "name": "R51",
-                "slug": "r51"
-            },
-            "tenant": null,
-            "facility": "",
-            "asn": null,
-            "time_zone": null,
-            "description": "Secret Datacenter",
-            "physical_address": "", #
-            "shipping_address": "",
-            "latitude": null, #
-            "longitude": null, #
-            "contact_name": "",
-            "contact_phone": "",
-            "contact_email": "",
-            "comments": "",
-            "tags": [],
-            "custom_fields": {},
-            "created": "2020-10-02",
-            "last_updated": "2020-10-02T15:28:34.076024Z",
-            "circuit_count": null,
-            "device_count": 6,
-            "prefix_count": null,
-            "rack_count": 1,
-            "virtualmachine_count": null,
-            "vlan_count": null
-            '''
