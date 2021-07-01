@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-import requests, json, os, argparse
+import requests, json, os, argparse, local
 from enum import Enum
 
 class Hierarchy(Enum):
@@ -18,7 +18,7 @@ objToHierarchyDict = {
     "site" : Hierarchy.SITE,
     "bldg": Hierarchy.BLDG,
     "building": Hierarchy.BLDG,
-    "room": Hierarchy.ROOM,
+    "group": Hierarchy.ROOM,
     "rack": Hierarchy.RACK,
     "device": Hierarchy.DEVICE,
     "subdevice": Hierarchy.SUBDEVICE,
@@ -26,6 +26,8 @@ objToHierarchyDict = {
 }
 depth = Hierarchy.RACK.value
 dcim_token = '95d2a16ddb3670eecacb1018e0de484d1b8267e7'
+token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJVc2VySWQiOjYzOTUyMDYyNzE4NDI3MTM2MX0.y34Vd-KPTzDQRowqiPlXE8Nz00TvDv5D3kF838JVBVQ'
+head = {'Authorization': 'Bearer {}'.format(token)}
 dhead = {'Authorization': 'Token {}'.format(dcim_token)}
 
 def getObjList(url):
@@ -122,11 +124,39 @@ args['fromnb'] == False)): #Error
 elif (args['import'] == True and 
 ((args['fromdir'] != None and args['fromdir'] != '') and 
 args['fromnb'] == False)): # Import from dir
-    pass
+    dir = args['dumpdir']
 elif (args['import'] == True and 
 ((args['fromdir'] == None) and args['fromnb'] == True)): #Import from NB
-    pass
+    
+    if args['objects'] != None:
+        depth = objToHierarchyDict[args['objects']].value
+    x = 0
+    while x < depth:
+        if x == 0: # TENANT
+            url = "https://dcim.chibois.net/api/tenancy/tenants/"
+        if x == 1: # SITE
+            url = "https://dcim.chibois.net/api/dcim/sites/"
+        if x == 2: # BLDG --> ROOM
+            print("No such thing as buildings, skipping")
+            x+=1
+            url = "https://dcim.chibois.net/api/dcim/rack-groups/"
+        if x == 4: # RACK
+            url = "https://dcim.chibois.net/api/dcim/racks/"
+        if x == 5: # DEVICE
+            url = "https://dcim.chibois.net/api/dcim/devices/"
+        objList = getObjList(url)
 
+        for item in objList:
+            if x == 0:
+                url = "https://ogree.chibois.net/api/user/tenants"
+                j = local.createTenant(item)
+                r = requests.post(url,  headers=head, 
+                        data=json.dumps(j))
+
+            else:
+                local.createItem(item, Hierarchy(x).value)
+
+            
 else:
     print('Executing with default settings')
 
