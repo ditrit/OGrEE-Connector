@@ -1,0 +1,26 @@
+{
+    "id": null,
+    "name": null,
+    "parentId": null,
+    "category": "rack",
+    "domain": "Domain",
+    "description": [
+      ""
+    ],
+    "attributes": {
+        "posXY": "0",
+        "posXYUnit": "tile",
+        "posZ": "Some position",
+        "posZUnit": "cm",
+        "template": "Some template",
+        "orientation": "front",
+        "size": "0",
+        "sizeUnit": "cm",
+        "height": "0",
+        "heightUnit": "U",
+        "vendor": null,
+        "type": null,
+        "model": null,
+        "serial": null
+    }
+  }

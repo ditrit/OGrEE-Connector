@@ -1,0 +1,14 @@
+{
+  "name": null,
+  "id": null,
+  "parentId": null,
+  "category": "tenant",
+  "description": [],
+  "domain": null,
+  "attributes": {
+    "color": "FFFFFF",
+    "mainContact": null,
+    "mainPhone": null,
+    "mainEmail": null
+  }
+}

@@ -19,6 +19,16 @@ dhead = {'Authorization': 'Token {}'.format(dcim_token)}
 eid = 0
 siteNamebldgIDDict = {}
 roomNameIDDict = {}
+rackNameIDDict = {}
+
+#JSON Dicts
+exaionJson = {}
+tenantJson = {}
+siteJson = {}
+bldgJson = {}
+roomJson = {}
+rackJson = {}
+deviceJson = {}
 
 
 # Helper func defs
@@ -31,6 +41,24 @@ def GetRoomName(siteName, BldgID):
      headers=head )
   return pr.json()['data']['objects'][0]['name']
 
+def postDevice(name, pid, devJson):
+  deviceJson['name'] = name
+  deviceJson['parentId'] = pid
+  r = requests.post("https://ogree.chibois.net/api/user/devices", 
+                                    headers=head, json=devJson)
+  if r.status_code != 201:
+    print("Error while creating device!")
+    print(devJson)
+    print(r.text)
+
+def getListFromFile(entType):
+    filename = "defaultJSON/"+entType+".json"
+    with open(filename) as f:
+        objList = f.read()
+
+    return json.loads(objList)
+
+
 
 #Create EXAION Tenant
 exaionJson = {
@@ -39,7 +67,7 @@ exaionJson = {
   "parentId": None,
   "category": "tenant",
   "description": ["Tenant for Herve", "A Place holder"],
-  "domain": "Exaion Domain",
+  "domain": "Connector Domain",
   "attributes": {
     "color": "Connector Color",
     "mainContact": None,
@@ -64,28 +92,22 @@ else:
 
 # Obtain the big list of Tenants
 # Then put into OGREDB
+tenantJson = getListFromFile("tenant")
 r = requests.get("https://dcim.chibois.net/api/tenancy/tenants/", 
 headers=dhead)
 print("Number of tenants to be added: ", len(r.json()['results']))
 for tenant in r.json()['results']:
-    tenantJson = {
-  "name": tenant['name'],
-  "id": None, #API doesn't allow non Server Generated IDs
-  "parentId": None,
-  "category": "tenant",
-  "description": [tenant['description']],
-  "domain": "Connector Domain",
-  "attributes": {
-    "color": "Connector Color",
-    "mainContact": None,
-    "mainPhone": None,
-    "mainEmail": None
-  }
-}
-    # Add to Cockroach
-    pr = requests.post("https://ogree.chibois.net/api/user/tenants",
+  tenantJson['name'] = tenant['name']
+  tenantJson['description'] = [tenant['description']]
+  tenantJson['domain'] = "Connector Domain"
+  pr = requests.post("https://ogree.chibois.net/api/user/tenants",
      headers=head, data=json.dumps(tenantJson) )
+  if pr.status_code != 201:
+    print("Error while adding tenants!")
+    print(pr.text)
+    exit()
 
+print("Successfully added tenants")
 
 # Obtain the big list of Sites
 # Store into Cockroach and add
@@ -93,29 +115,38 @@ for tenant in r.json()['results']:
 r = requests.get("https://dcim.chibois.net/api/dcim/sites/", headers=dhead)
 print("Number of Sites to be added: ", len(r.json()['results']))
 print("Adding Sites...")
+siteJson = getListFromFile("site")
 for entry in r.json()['results']:
-  npq = {
-  "name": entry['name'],
-  "id": None, #API doesn't allow non Server Generated IDs
-  "parentId": eid, #No site in Netbox has an existing tenant => place in Exaion 
-  "category": "site",
-  "description": [entry['description']],
-  "domain": "Connector Domain",
-  "attributes": {
-    "orientation": "NW",
-    "usableColor": "ExaionColor",
-    "reservedColor": "ExaionColor",
-    "technicalColor": "ExaionColor",
-    "address": entry['physical_address'],
-    "zipcode": None,
-    "city": None,
-    "country": None,
-    "gps": None # None of the sites have coordinates
-  }
-}
-
+#  siteJson = {
+#  "name": entry['name'],
+#  "id": None, #API doesn't allow non Server Generated IDs
+#  "parentId": eid, #No site in Netbox has an existing tenant => place in Exaion 
+#  "category": "site",
+#  "description": [entry['description']],
+#  "domain": "Connector Domain",
+#  "attributes": {
+#    "orientation": "NW",
+#    "usableColor": "ExaionColor",
+#    "reservedColor": "ExaionColor",
+#    "technicalColor": "ExaionColor",
+#    "address": entry['physical_address'],
+#    "zipcode": None,
+#    "city": None,
+#    "country": None,
+#    "gps": None # None of the sites have coordinates
+#  }
+#}
+  siteJson['name'] = entry['name']
+  siteJson['description'] = [entry['description']]
+  siteJson['parentId'] = eid
+  siteJson['domain'] = 'Connector Domain'
+  siteJson['attributes']['address'] = entry['physical_address']
   pr = requests.post("https://ogree.chibois.net/api/user/sites",
-   headers=head, data=json.dumps(npq) )
+   headers=head, data=json.dumps(siteJson) )
+  if pr.status_code != 201:
+    print("Error with site!")
+    print(pr.text)
+    exit()
 
   siteID = pr.json()['data']
   print("Adding corresponding building")
@@ -220,3 +251,208 @@ for idx in r.json()['results']:
   }
   tmpr = requests.post("https://ogree.chibois.net/api/user/racks",
   headers=head, data=json.dumps(rackJson) )
+  rackNameIDDict[str(name)] = tmpr.json()['data']['id']
+
+
+
+#GET Devices from Netbox
+deviceJson = {
+    "name": None,
+    "id": None,
+    "parentId": None,
+    "category": "device",
+    "description": [''
+    ],
+    "domain": "Connector Domain",
+    "attributes": {
+        "posXY": "0",
+        "posXYUnit": "tile",
+        "posZ": "0",
+        "posZUnit": "tile",
+        "size": "0",
+        "sizeUnit": "mm",
+        "height": "0",
+        "heightUnit": "U",
+        "template": "",
+        "orientation": "front",
+        "vendor": "",
+        "type": "",
+        "model": "",
+        "serial": ""
+    }
+}
+
+numDevicesValid = 0
+numDevicesWithSiteWithoutRack = 0
+numDevicesWithRackWithoutSite = 0
+numDevicesWithoutBoth = 0
+res = requests.get("https://dcim.chibois.net/api/dcim/devices/?limit=2000",
+ headers=dhead)
+r = requests.get(res.json()['next'], headers=dhead)
+devices = res.json()['results'] + r.json()['results']
+
+print("Number of Devices to check: ", len(devices))
+print("Checking Devices...")
+x = 0
+for idx in devices:
+  print(x)
+
+  if 'rack' in idx and 'site' in idx:
+    if idx['rack'] != None and idx['site'] != None:
+      if 'name' in idx['rack'] and 'name' in idx['site']:
+        #Check slightly more
+        if (idx['rack']['name'] != None and idx['site']['name'] != None):
+          #Check Dict 
+          if (idx['site']['name'] in siteNamebldgIDDict and
+            idx['rack']['name'] in rackNameIDDict) :
+            numDevicesValid+=1
+            postDevice(idx['name'], rackNameIDDict[idx['rack']['name']], deviceJson)
+          
+          elif (idx['site']['name'] in siteNamebldgIDDict and
+            idx['rack']['name'] not in rackNameIDDict) :
+            numDevicesWithSiteWithoutRack+=1
+
+          elif (idx['site']['name'] not in siteNamebldgIDDict and
+            idx['rack']['name'] in rackNameIDDict) :
+            numDevicesWithRackWithoutSite+=1
+          
+          else: #Both not in Dict
+            numDevicesWithoutBoth+=1
+        
+        elif idx['rack']['name'] != None and idx['site']['name'] == None:
+          #Check Dict
+          if idx['rack']['name'] in rackNameIDDict:
+            numDevicesWithRackWithoutSite+=1
+          else: #Both not in Dict
+            numDevicesWithoutBoth+=1
+            
+
+        elif idx['rack']['name'] == None and idx['site']['name'] != None:
+          #Check Dict
+          if idx['site']['name'] in siteNamebldgIDDict:
+            numDevicesWithSiteWithoutRack+=1
+          else: #Both not in Dict
+            numDevicesWithoutBoth+=1
+            
+        else: #Rack&Site not Named
+          numDevicesWithoutBoth+=1
+
+      elif 'name' in idx['rack'] and 'name' not in idx['site']:
+        #Check slightly more 2
+        if idx['rack']['name'] != None:
+          #Check dict
+          if idx['rack']['name'] in rackNameIDDict:
+            numDevicesWithRackWithoutSite+=1
+          else: #Both not in Dict
+            numDevicesWithoutBoth+=1
+        
+        else: #Both not named
+          numDevicesWithoutBoth+=1
+
+      elif 'name' not in idx['rack'] and 'name' in idx['site']:
+        #Check slightly more 2
+        if idx['site']['name'] != None:
+          #Check Dict
+          if idx['site']['name'] in siteNamebldgIDDict:
+            numDevicesWithSiteWithoutRack +=1
+          else: #Both not in Dict
+            numDevicesWithoutBoth+=1
+        
+        else: #Both not named
+          numDevicesWithoutBoth+=1
+
+      else: # Name not in both
+        numDevicesWithoutBoth+=1
+
+
+    elif idx['rack'] == None and idx['site'] != None:
+      #Check more 2
+      if 'name' in idx['site']:
+        #Check slightly more
+        if idx['site']['name'] != None:
+          #Check Dict
+          if idx['site']['name'] in siteNamebldgIDDict:
+            numDevicesWithSiteWithoutRack+=1
+          else: #Name not in both
+            numDevicesWithoutBoth+=1
+        
+        else: #Name not in both
+          numDevicesWithoutBoth+=1
+      
+      else: #Name not in both
+        numDevicesWithoutBoth+=1
+
+    elif idx['rack'] != None and idx['site'] == None:
+      #Check more 2
+      if 'name' in idx['rack']:
+        #Check slightly more
+        if idx['rack']['name'] != None:
+          #Check Dict
+          if idx['rack']['name'] in rackNameIDDict:
+            numDevicesWithRackWithoutSite+=1
+          else: #Name not in both
+            numDevicesWithoutBoth+=1
+
+        else: #Name not in both
+          numDevicesWithoutBoth+=1
+
+      else: #Name not in both
+        numDevicesWithoutBoth+=1
+
+    else: #Both indexes are None
+      numDevicesWithoutBoth+=1
+
+  elif 'rack' in idx and 'site' not in idx:
+    if idx['rack'] != None:
+      #Check more
+      if 'name' in idx['rack']:
+        #Check slightly more
+        if idx['rack']['name'] != None:
+          #Check Dict
+          if idx['rack']['name'] in rackNameIDDict:
+            numDevicesWithRackWithoutSite+=1
+
+          else: #Name not in both
+            numDevicesWithoutBoth+=1
+
+        else: #Name not in both
+          numDevicesWithoutBoth+=1
+
+      else: #No name in both
+        numDevicesWithoutBoth+=1
+
+    else: #No rack no site
+      numDevicesWithoutBoth+=1
+
+  elif 'rack' not in idx and 'site' in idx:
+    if idx['site'] != None:
+      #Check more
+      if 'name' in idx['site']:
+        #Check slightly more
+        if idx['site']['name'] != None:
+          #Check Dict
+          if idx['site']['name'] in rackNameIDDict:
+            numDevicesWithSiteWithoutRack+=1
+
+          else: #Name not in both
+            numDevicesWithoutBoth+=1
+            
+        else: #Name not in both
+          numDevicesWithoutBoth+=1
+
+      else: #No name in both
+        numDevicesWithoutBoth+=1
+
+    else: #No rack no site
+      numDevicesWithoutBoth+=1
+
+  else:
+    numDevicesWithoutBoth+=1
+  
+  x+=1
+
+
+print("Num devices valid: ", numDevicesValid)
+print("Num devices with Site without Rack: ", numDevicesWithSiteWithoutRack)
+print("Num devices with Rack without Site: ", numDevicesWithRackWithoutSite)
+print("Num devices without both: ", numDevicesWithoutBoth)

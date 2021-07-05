@@ -1,0 +1,24 @@
+{
+    "name": null,
+    "id": null,
+    "parentId": null,
+    "category": "device",
+    "description": [""],
+    "domain": "Domain",
+    "attributes": {
+        "posXY": "0",
+        "posXYUnit": "tile",
+        "posZ": "0",
+        "posZUnit": "tile",
+        "size": "0",
+        "sizeUnit": "mm",
+        "height": "0",
+        "heightUnit": "U",
+        "template": "",
+        "orientation": "front",
+        "vendor": "",
+        "type": "",
+        "model": "",
+        "serial": ""
+    }
+}

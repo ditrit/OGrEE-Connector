@@ -1,0 +1,24 @@
+{
+    "id": null,
+    "name": null,
+    "parentId": null,
+    "category": "room",
+    "domain": "Domain",
+    "description": [
+        ""
+    ],
+    "attributes": {
+        "posXY": "0",
+        "posXYUnit": "m",
+        "posZ": "0",
+        "posZUnit": "m",
+        "template": "",
+        "orientation": "+N+W",
+        "size": "0",
+        "sizeUnit": "m",
+        "height": "0",
+        "heightUnit": "m",
+        "technical": "0",
+        "reserved": "0"
+    }
+  }

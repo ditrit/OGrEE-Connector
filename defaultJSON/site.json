@@ -1,0 +1,19 @@
+{
+  "name": null,
+  "id": null,
+  "parentId": null,
+  "category": "site",
+  "description": [""],
+  "domain": null,
+  "attributes": {
+      "orientation": "NW",
+      "usableColor": "AAAAAA",
+      "reservedColor": "AAAAAA",
+      "technicalColor": "AAAAAA",
+      "address": null,
+      "zipcode": null,
+      "city": null,
+      "country": null,
+      "gps": null
+  }
+}
