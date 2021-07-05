@@ -1,11 +1,20 @@
 #!/usr/bin/env python
-import requests, json
+import requests, json, argparse
 
 # URLs
 # LOCAL: http://localhost:8000/api/user/tenants
 # DCIM: https://api.chibois.net/api/dcim/racks/
 # NETBX: https://dcim.chibois.net/api/dcim/racks
 
+
+#COMMAND OPTIONS
+parser = argparse.ArgumentParser(description='Import from Netbox to file .')
+parser.add_argument('--APIurl', 
+                    help="""Specify which API URL to send data""")
+parser.add_argument('--NBURL',
+                    help="""Specify URL of Netbox""")
+parser.add_argument("--APItoken", help="(Optionally) Specify a Bearer token for API")
+parser.add_argument("--NBtoken", help="(Optionally) Specify a Netbox auth token")
 
 #Auth Token
 token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJVc2VySWQiOjYzOTUyMDYyNzE4NDI3MTM2MX0.y34Vd-KPTzDQRowqiPlXE8Nz00TvDv5D3kF838JVBVQ'
@@ -44,7 +53,7 @@ def GetRoomName(siteName, BldgID):
 def postDevice(name, pid, devJson):
   deviceJson['name'] = name
   deviceJson['parentId'] = pid
-  r = requests.post("https://ogree.chibois.net/api/user/devices", 
+  r = requests.post(API+"/devices", 
                                     headers=head, json=devJson)
   if r.status_code != 201:
     print("Error while creating device!")
@@ -58,6 +67,31 @@ def getListFromFile(entType):
 
     return json.loads(objList)
 
+
+#START
+args = vars(parser.parse_args())
+if ('NBURL' not in args or args['NBURL'] == None):
+    print('Netbox URL not specified... using default URL')
+    NBURL = "https://dcim.chibois.net/api"
+else:
+    NBURL = args['NBURL']
+
+if ('APIurl' not in args or args['APIurl'] == None):
+    print('API URL not specified... using default URL')
+    API = "https://ogree.chibois.net/api/user"
+else:
+    API = args['APIurl']
+
+
+if 'APItoken' in args:
+  if args['APItoken'] != '':
+    token = args['APItoken']
+    head = {'Authorization': 'Bearer {}'.format(token)}
+
+if 'NBtoken' in args:
+  if args['NBtoken'] != '':
+    dcim_token = args['NBtoken']
+    dhead = {'Authorization': 'Token {}'.format(dcim_token)}
 
 
 #Create EXAION Tenant
@@ -76,7 +110,7 @@ exaionJson = {
   }
 }
 
-r = requests.post("https://ogree.chibois.net/api/user/tenants", 
+r = requests.post(API+"/tenants", 
   headers=head, data=json.dumps(exaionJson))
 
 if "data" in r.json():
@@ -93,14 +127,14 @@ else:
 # Obtain the big list of Tenants
 # Then put into OGREDB
 tenantJson = getListFromFile("tenant")
-r = requests.get("https://dcim.chibois.net/api/tenancy/tenants/", 
+r = requests.get(NBURL+"/tenancy/tenants/", 
 headers=dhead)
 print("Number of tenants to be added: ", len(r.json()['results']))
 for tenant in r.json()['results']:
   tenantJson['name'] = tenant['name']
   tenantJson['description'] = [tenant['description']]
   tenantJson['domain'] = "Connector Domain"
-  pr = requests.post("https://ogree.chibois.net/api/user/tenants",
+  pr = requests.post(API+"/tenants",
      headers=head, data=json.dumps(tenantJson) )
   if pr.status_code != 201:
     print("Error while adding tenants!")
@@ -112,7 +146,7 @@ print("Successfully added tenants")
 # Obtain the big list of Sites
 # Store into Cockroach and add
 # a placeholder bldg to each site
-r = requests.get("https://dcim.chibois.net/api/dcim/sites/", headers=dhead)
+r = requests.get(NBURL+"/dcim/sites/", headers=dhead)
 print("Number of Sites to be added: ", len(r.json()['results']))
 print("Adding Sites...")
 siteJson = getListFromFile("site")
@@ -141,7 +175,7 @@ for entry in r.json()['results']:
   siteJson['parentId'] = eid
   siteJson['domain'] = 'Connector Domain'
   siteJson['attributes']['address'] = entry['physical_address']
-  pr = requests.post("https://ogree.chibois.net/api/user/sites",
+  pr = requests.post(API+"/sites",
    headers=head, data=json.dumps(siteJson) )
   if pr.status_code != 201:
     print("Error with site!")
@@ -169,14 +203,14 @@ for entry in r.json()['results']:
     "nbFloors":"99"
     }
   }
-  tmpr = requests.post("https://ogree.chibois.net/api/user/buildings",
+  tmpr = requests.post(API+"/buildings",
   headers=head, data=json.dumps(bldgJson) )
   siteNamebldgIDDict[siteID['name']] = tmpr.json()['data']['id']
 
 
 # Obtain the big list of Rooms (Rack-Groups)
 # Store using tenant 'Exaion' and site name
-r = requests.get("https://dcim.chibois.net/api/dcim/rack-groups/",
+r = requests.get(NBURL+"/dcim/rack-groups/",
  headers=dhead)
 for idx in r.json()['results']:
   roomJson = {
@@ -203,7 +237,7 @@ for idx in r.json()['results']:
         "reserved": "{\"left\":2.0,\"right\":2.0,\"top\":2.0,\"bottom\":2.0}"
     }
   }
-  tmpr = requests.post("https://ogree.chibois.net/api/user/rooms",
+  tmpr = requests.post(API+"/rooms",
   headers=head, data=json.dumps(roomJson) )
   roomNameIDDict[idx['name']] = tmpr.json()['data']['id']
 
@@ -211,7 +245,7 @@ for idx in r.json()['results']:
 # Obtain the big list of Racks
 # store using the room Name & 
 # corresponding ID
-r = requests.get("https://dcim.chibois.net/api/dcim/racks/",
+r = requests.get(NBURL+"/dcim/racks/",
  headers=dhead)
 print("Number of Racks to be added: ", len(r.json()['results']))
 print("Adding Racks...")
@@ -249,7 +283,7 @@ for idx in r.json()['results']:
         "serial": "someSerial"
     }
   }
-  tmpr = requests.post("https://ogree.chibois.net/api/user/racks",
+  tmpr = requests.post(API+"/racks",
   headers=head, data=json.dumps(rackJson) )
   rackNameIDDict[str(name)] = tmpr.json()['data']['id']
 
@@ -286,7 +320,7 @@ numDevicesValid = 0
 numDevicesWithSiteWithoutRack = 0
 numDevicesWithRackWithoutSite = 0
 numDevicesWithoutBoth = 0
-res = requests.get("https://dcim.chibois.net/api/dcim/devices/?limit=2000",
+res = requests.get(NBURL+"/dcim/devices/?limit=2000",
  headers=dhead)
 r = requests.get(res.json()['next'], headers=dhead)
 devices = res.json()['results'] + r.json()['results']

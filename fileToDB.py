@@ -180,6 +180,8 @@ parser.add_argument('--dir',
                     help="""Location of JSON files.
                     All files shall be in the form {entity}List.json
                     '""")
+parser.add_argument("--token", help="(Optionally) Specify a Bearer token")
+parser.add_argument("--url", help="(Optionally) Specify API URL")
 
 #FUNCTION DEFINTIONS
 def getListFromFile(entType):
@@ -207,7 +209,7 @@ def getStdJson(x):
 
 def createExaionTenant():
     j = exaionJson
-    r = requests.post("https://ogree.chibois.net/api/user/tenants", 
+    r = requests.post(APIURL+"/tenants", 
         headers=head, json=j)
     return r.json()['data']['id']
     
@@ -245,7 +247,7 @@ def getCorrespondingDict(x):
 
 def GetRoomName(siteName, BldgID):
   pr = requests.get(
-    "https://ogree.chibois.net/api/user/buildings/"+str(BldgID)+"/rooms",
+    url+"/buildings/"+str(BldgID)+"/rooms",
      headers=head )
   return (pr.json()['data']['objects'][0]['name'], 
     pr.json()['data']['objects'][0]['id'])
@@ -263,6 +265,17 @@ if args['objects'] != None:
 else:
     print('Objects not specified... using Device as dump limit')
     depth = Hierarchy(5).value #DEVICE
+
+if 'token' in args:
+    if args['token'] != "":
+        token = args['token']
+        head = {'Authorization': 'Bearer {}'.format(token)}
+
+if 'url' in args:
+    if args['url'] != '':
+        APIURL = args['url']
+else:
+    APIURL = "https://ogree.chibois.net/api/user"
 
 
 #START
@@ -288,12 +301,12 @@ while x < depth:
     
     for idx in objList:
         if x == 0: # TENANT
-            url = "https://ogree.chibois.net/api/user/tenants"
+            url = APIURL+"/tenants"
             sj['name'] = idx['name']
             sj['description'] = [idx['description']]
             r = post(sj, url)
         if x == 1: # SITE
-            url = "https://ogree.chibois.net/api/user/sites"
+            url = APIURL+"/sites"
             sj['name'] = idx['name']
             sj['description'] = [idx['description']]
             sj['parentId'] = EID #No site in Netbox has an existing tenant => place in Exaion 
@@ -301,7 +314,7 @@ while x < depth:
         if x == 2: # BLDG --> ROOM
             print("No such thing as buildings, generating rand bldgs...")
             #x+=1
-            url = "https://ogree.chibois.net/api/user/rooms"
+            url = APIURL+"/rooms"
             sj = getStdJson(x+1)
             sj['name'] = idx['name']
             #print(idx)
@@ -309,7 +322,7 @@ while x < depth:
             print(sj['name'])
             r = post(sj, url)
         if x == 4: # RACK
-            url = "https://ogree.chibois.net/api/user/racks"
+            url = APIURL+"/racks"
             sj['id'] = None
             sj['name'] = idx['name']
 
@@ -327,12 +340,12 @@ while x < depth:
             sj['attributes']['height'] = str(idx['u_height'])
             r = post(sj, url)
         if x == 5: # DEVICE
-            url = "https://ogree.chibois.net/api/user/devices"
+            url = APIURL+"/devices"
             r = post(sj, url)
 
         
         if x == 1:
-            genBldgForSite("https://ogree.chibois.net/api/user/buildings",
+            genBldgForSite(APIURL+"/buildings",
             r, idx['name'])
         getCorrespondingDict(x)[idx['name']] = r
     x+=1
