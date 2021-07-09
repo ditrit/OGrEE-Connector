@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-import requests, json, argparse
+import requests, json, argparse, os
 
 # URLs
 # LOCAL: http://localhost:8000/api/user/tenants
@@ -59,6 +59,7 @@ def postDevice(name, pid, devJson):
     print("Error while creating device!")
     print(devJson)
     print(r.text)
+    writeErrListToFile(deviceJson, "device")
 
 def getListFromFile(entType):
     filename = "defaultJSON/"+entType+".json"
@@ -67,6 +68,12 @@ def getListFromFile(entType):
 
     return json.loads(objList)
 
+def writeErrListToFile(devList, entType):
+  filename = "./"+entType+"ErrList.json"
+  print(filename)
+  os.makedirs(os.path.dirname(filename), exist_ok=True)
+  with open(filename, 'a') as f:
+    json.dump(devList, f)
 
 #START
 args = vars(parser.parse_args())
@@ -83,15 +90,13 @@ else:
     API = args['APIurl']
 
 
-if 'APItoken' in args:
-  if args['APItoken'] != '':
-    token = args['APItoken']
-    head = {'Authorization': 'Bearer {}'.format(token)}
+if (args['APItoken'] != None):
+  token = args['APItoken']
+  head = {'Authorization': 'Bearer {}'.format(token)}
 
-if 'NBtoken' in args:
-  if args['NBtoken'] != '':
-    dcim_token = args['NBtoken']
-    dhead = {'Authorization': 'Token {}'.format(dcim_token)}
+if args['NBtoken'] != None:
+  dcim_token = args['NBtoken']
+  dhead = {'Authorization': 'Token {}'.format(dcim_token)}
 
 
 #Create EXAION Tenant
@@ -100,8 +105,8 @@ exaionJson = {
   "id": None,  #API doesn't allow non Server Generated IDs
   "parentId": None,
   "category": "tenant",
-  "description": ["Tenant for Herve", "A Place holder"],
-  "domain": "Connector Domain",
+  "description": ["ConnectorImported","Tenant for Herve", "A Place holder"],
+  "domain": "Exaion",
   "attributes": {
     "color": "Connector Color",
     "mainContact": None,
@@ -110,8 +115,13 @@ exaionJson = {
   }
 }
 
+print(API)
 r = requests.post(API+"/tenants", 
   headers=head, data=json.dumps(exaionJson))
+if r.status_code != 201:
+  print("Error while creating tenant!")
+  print(r.text)
+  exit()
 
 if "data" in r.json():
   print("OK we are on traditional setup")
@@ -130,10 +140,13 @@ tenantJson = getListFromFile("tenant")
 r = requests.get(NBURL+"/tenancy/tenants/", 
 headers=dhead)
 print("Number of tenants to be added: ", len(r.json()['results']))
+x=0
 for tenant in r.json()['results']:
   tenantJson['name'] = tenant['name']
-  tenantJson['description'] = [tenant['description']]
-  tenantJson['domain'] = "Connector Domain"
+  tenantJson['description'] = ["ConnectorImported",tenant['description']]
+  tenantJson['domain'] = tenant['name']
+  print(x, ": ", tenant['name'])
+  x+=1
   pr = requests.post(API+"/tenants",
      headers=head, data=json.dumps(tenantJson) )
   if pr.status_code != 201:
@@ -150,6 +163,7 @@ r = requests.get(NBURL+"/dcim/sites/", headers=dhead)
 print("Number of Sites to be added: ", len(r.json()['results']))
 print("Adding Sites...")
 siteJson = getListFromFile("site")
+x = 0 
 for entry in r.json()['results']:
 #  siteJson = {
 #  "name": entry['name'],
@@ -171,10 +185,12 @@ for entry in r.json()['results']:
 #  }
 #}
   siteJson['name'] = entry['name']
-  siteJson['description'] = [entry['description']]
+  siteJson['description'] = ["ConnectorImported",entry['description']]
   siteJson['parentId'] = eid
-  siteJson['domain'] = 'Connector Domain'
+  siteJson['domain'] = 'Exaion'
   siteJson['attributes']['address'] = entry['physical_address']
+  print(x, ": ", entry['name'])
+  x+=1
   pr = requests.post(API+"/sites",
    headers=head, data=json.dumps(siteJson) )
   if pr.status_code != 201:
@@ -189,8 +205,8 @@ for entry in r.json()['results']:
   "id": None, #API doesn't allow non Server Generated IDs
   "parentId": siteID['id'],
   "category": "building",
-  "description": ["Some Building"],
-  "domain": "Connector Domain",
+  "description": ["ConnectorImported","Some Building"],
+  "domain": "Exaion",
   "attributes": {
     "posXY": "99,99",
     "posXYUnit": "mm",
@@ -206,21 +222,24 @@ for entry in r.json()['results']:
   tmpr = requests.post(API+"/buildings",
   headers=head, data=json.dumps(bldgJson) )
   siteNamebldgIDDict[siteID['name']] = tmpr.json()['data']['id']
+  print(bldgJson['name'])
 
 
 # Obtain the big list of Rooms (Rack-Groups)
 # Store using tenant 'Exaion' and site name
 r = requests.get(NBURL+"/dcim/rack-groups/",
  headers=dhead)
+x = 0
 for idx in r.json()['results']:
+  print(x, ": ", idx['name'], ": PARENT: ", idx['site']['name'])
   roomJson = {
     "id": None,
     "name": idx['name'],
     "parentId": siteNamebldgIDDict[idx['site']['name']],
     "category": "room",
-    "domain": "Connector Domain",
+    "domain": "Exaion",
     "description": [
-        ""
+        "ConnectorImported"
     ],
     "attributes": {
         "posXY": "{\"x\":10,\"y\":10}",
@@ -240,6 +259,7 @@ for idx in r.json()['results']:
   tmpr = requests.post(API+"/rooms",
   headers=head, data=json.dumps(roomJson) )
   roomNameIDDict[idx['name']] = tmpr.json()['data']['id']
+  x+=1
 
 
 # Obtain the big list of Racks
@@ -247,24 +267,29 @@ for idx in r.json()['results']:
 # corresponding ID
 r = requests.get(NBURL+"/dcim/racks/",
  headers=dhead)
-print("Number of Racks to be added: ", len(r.json()['results']))
+totalRacks = (requests.get(r.json()['next'], headers=dhead)).json()['results'] + r.json()['results']
+print("Number of Racks to be added: ", len(totalRacks))
 print("Adding Racks...")
-for idx in r.json()['results']:
+x = 0
+for idx in totalRacks:
+  #print(x, ": ", idx['name'])
   if idx['group'] == None:
-    name = GetRoomName(idx['site']['name'], 
-      siteNamebldgIDDict[idx['site']['name']])
-    pid = roomNameIDDict[name]
+    #name = 
+    pid = roomNameIDDict[GetRoomName(idx['site']['name'], 
+      siteNamebldgIDDict[idx['site']['name']])]
+    name = idx['name']
   else:
     name = idx['name']
     pid = roomNameIDDict[idx['group']['name']]
+  print(x, ": ", str(name))
   rackJson = {
     "id": None,
     "name": str(name),
     "parentId": str(pid),
     "category": "rack",
-    "domain": "Connector Domain",
+    "domain": "Exaion",
     "description": [
-      ""
+      "ConnectorImported"
     ],
     "attributes": {
         "posXY": "{\"x\":10.0,\"y\":0.0}",
@@ -285,7 +310,14 @@ for idx in r.json()['results']:
   }
   tmpr = requests.post(API+"/racks",
   headers=head, data=json.dumps(rackJson) )
-  rackNameIDDict[str(name)] = tmpr.json()['data']['id']
+  x+=1
+  if 'data' in tmpr.json():
+    if 'id' in tmpr.json()['data']:
+      rackNameIDDict[str(name)] = tmpr.json()['data']['id']
+  else:
+    print('Error with rack: ', str(name))
+    print(tmpr.json()['message'])
+    writeErrListToFile(rackJson, "rack")
 
 
 
@@ -295,9 +327,9 @@ deviceJson = {
     "id": None,
     "parentId": None,
     "category": "device",
-    "description": [''
+    "description": ["ConnectorImported"
     ],
-    "domain": "Connector Domain",
+    "domain": "Exaion",
     "attributes": {
         "posXY": "0",
         "posXYUnit": "tile",
@@ -320,16 +352,21 @@ numDevicesValid = 0
 numDevicesWithSiteWithoutRack = 0
 numDevicesWithRackWithoutSite = 0
 numDevicesWithoutBoth = 0
+numRacksNull = 0
+numRackExistButNotFound = 0
+numNamelessRacks = 0
 res = requests.get(NBURL+"/dcim/devices/?limit=2000",
  headers=dhead)
 r = requests.get(res.json()['next'], headers=dhead)
 devices = res.json()['results'] + r.json()['results']
+#deviceErrList = []
 
 print("Number of Devices to check: ", len(devices))
 print("Checking Devices...")
 x = 0
 for idx in devices:
-  print(x)
+  print(x, ": ", idx['name'])
+  #print()
 
   if 'rack' in idx and 'site' in idx:
     if idx['rack'] != None and idx['site'] != None:
@@ -345,6 +382,9 @@ for idx in devices:
           elif (idx['site']['name'] in siteNamebldgIDDict and
             idx['rack']['name'] not in rackNameIDDict) :
             numDevicesWithSiteWithoutRack+=1
+            numNamelessRacks+=1
+            writeErrListToFile(idx, "device")
+            #deviceErrList += idx
 
           elif (idx['site']['name'] not in siteNamebldgIDDict and
             idx['rack']['name'] in rackNameIDDict) :
@@ -364,7 +404,10 @@ for idx in devices:
         elif idx['rack']['name'] == None and idx['site']['name'] != None:
           #Check Dict
           if idx['site']['name'] in siteNamebldgIDDict:
+            numRacksNull+=1
             numDevicesWithSiteWithoutRack+=1
+            writeErrListToFile(idx, "device")
+            #deviceErrList += idx
           else: #Both not in Dict
             numDevicesWithoutBoth+=1
             
@@ -389,6 +432,9 @@ for idx in devices:
           #Check Dict
           if idx['site']['name'] in siteNamebldgIDDict:
             numDevicesWithSiteWithoutRack +=1
+            numNamelessRacks+=1
+            writeErrListToFile(idx, "device")
+            #deviceErrList += idx
           else: #Both not in Dict
             numDevicesWithoutBoth+=1
         
@@ -406,7 +452,10 @@ for idx in devices:
         if idx['site']['name'] != None:
           #Check Dict
           if idx['site']['name'] in siteNamebldgIDDict:
+            numRacksNull+=1
             numDevicesWithSiteWithoutRack+=1
+            writeErrListToFile(idx, "device")
+            #deviceErrList += idx
           else: #Name not in both
             numDevicesWithoutBoth+=1
         
@@ -467,6 +516,9 @@ for idx in devices:
           #Check Dict
           if idx['site']['name'] in rackNameIDDict:
             numDevicesWithSiteWithoutRack+=1
+            numRacksNull+=1
+            writeErrListToFile(idx, "device")
+            #deviceErrList += idx
 
           else: #Name not in both
             numDevicesWithoutBoth+=1
@@ -490,3 +542,7 @@ print("Num devices valid: ", numDevicesValid)
 print("Num devices with Site without Rack: ", numDevicesWithSiteWithoutRack)
 print("Num devices with Rack without Site: ", numDevicesWithRackWithoutSite)
 print("Num devices without both: ", numDevicesWithoutBoth)
+print("Num devices with NULL Rack: ", numRacksNull)
+print("Num devices with nameless Rack: ", numNamelessRacks)
+print("Num devices with unfindable Racks: ", numRackExistButNotFound)
+#writeErrListToFile(deviceErrList)

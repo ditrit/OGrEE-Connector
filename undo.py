@@ -10,11 +10,15 @@ print("Undoing the import...")
 pr = requests.get(
     "https://ogree.chibois.net/api/user/tenants", headers=head )
 
+#for x in pr.json()["data"]["objects"]:
+#    if (x["domain"] == "Connector Domain" or x["domain"] == "Exaion Domain"):
+#        requests.delete(
+#            "https://ogree.chibois.net/api/user/tenants/"+x["id"],
+#             headers=head)
+
 for x in pr.json()["data"]["objects"]:
-    if (x["domain"] == "Connector Domain" or x["domain"] == "Exaion Domain"):
-        requests.delete(
-            "https://ogree.chibois.net/api/user/tenants/"+x["id"],
-             headers=head)
+    if(x['description'][0] == 'ConnectorImported'):
+        requests.delete("https://ogree.chibois.net/api/user/tenants/"+x['id'], headers=head)
 
 
 print("Finished deleting!")
