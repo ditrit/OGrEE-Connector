@@ -46,7 +46,7 @@ deviceJson = {}
 # in json
 def GetRoomName(siteName, BldgID):
   pr = requests.get(
-    "https://ogree.chibois.net/api/user/buildings/"+str(BldgID)+"/rooms",
+    API+"/buildings/"+str(BldgID)+"/rooms",
      headers=head )
   return pr.json()['data']['objects'][0]['name']
 
@@ -157,7 +157,7 @@ for tenant in r.json()['results']:
 print("Successfully added tenants")
 
 # Obtain the big list of Sites
-# Store into Cockroach and add
+# Store into MDB and add
 # a placeholder bldg to each site
 r = requests.get(NBURL+"/dcim/sites/", headers=dhead)
 print("Number of Sites to be added: ", len(r.json()['results']))
