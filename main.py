@@ -108,7 +108,7 @@ exaionJson = {
   "description": ["ConnectorImported","Tenant for Herve", "A Place holder"],
   "domain": "Exaion",
   "attributes": {
-    "color": "Connector Color",
+    "color": "FFFFFF",
     "mainContact": None,
     "mainPhone": None,
     "mainEmail": None
