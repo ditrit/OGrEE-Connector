@@ -1,3 +1,4 @@
 *.txt
 test*.py
 *List.json
+*.pyc
