@@ -1,10 +1,11 @@
 #!/usr/bin/env python
-import requests, json, argparse, os
+import requests, json, argparse, os, sys
+from enum import Enum
 
 # URLs
-# LOCAL: http://localhost:8000/api/user/tenants
-# DCIM: https://api.chibois.net/api/dcim/racks/
-# NETBX: https://dcim.chibois.net/api/dcim/racks
+# LOCAL: http://localhost:3001/api/tenants
+# DCIM: https://dcim.ogree.ditrit.io/api/dcim/racks/
+# NETBX: https://api.ogree.ditrit.io/api/tenants
 
 
 #COMMAND OPTIONS
@@ -26,9 +27,34 @@ dhead = {'Authorization': 'Token {}'.format(dcim_token)}
 
 # EXAION ID & Maps
 eid = 0
+placeHolderDict = {}
+tenantNameIDDict = {}
 siteNamebldgIDDict = {}
 roomNameIDDict = {}
 rackNameIDDict = {}
+
+#Maps for tracking added objs
+#{DCIM-ID: (name, API-ID)}
+tenantDict = {}
+siteDict = {}
+bldgDict = {}
+roomDict = {}
+rackDict = {}
+deviceDict = {}
+
+#Tuple arrays for tracking added objs
+#[ (name,ID), ... ]
+tenantArr = []
+siteArr = []
+bldgArr = []
+roomArr = []
+rackArr = []
+devArr = []
+
+#The dcim api doesn't have buildings and rooms so they are
+#added as place holders
+#bldgs will only have 1 room each
+bldgIDRoomIDDict ={} 
 
 #JSON Dicts
 exaionJson = {}
@@ -38,6 +64,23 @@ bldgJson = {}
 roomJson = {}
 rackJson = {}
 deviceJson = {}
+
+
+class Entity(Enum):
+    TENANT = 0
+    SITE = 1
+    BLDG = 2
+    ROOM = 3
+    RACK  = 4
+    DEVICE  = 5
+    OBJ_TEMPLATE = 6
+    ROOM_TEMPLATE = 7
+
+def entStrToInt(ent):
+    return Entity[ent].value
+
+def entIntToStr(ent):
+    return Entity(ent).name
 
 
 # Helper func defs
@@ -50,17 +93,56 @@ def GetRoomName(siteName, BldgID):
      headers=head )
   return pr.json()['data']['objects'][0]['name']
 
-def postDevice(name, pid, devJson):
-  deviceJson['name'] = name
-  deviceJson['parentId'] = pid
-  r = requests.post(API+"/devices", 
-                                    headers=head, json=devJson)
+def postObj(name, pid, oJSON, obj):
+  oJSON['name'] = name
+  oJSON['parentId'] = pid
+  r = requests.post(API+"/"+obj+"s", 
+                                    headers=head, json=oJSON)
   if r.status_code != 201:
-    print("Error while creating device!")
-    print(devJson)
+    print("Error while creating "+obj+"!")
+    print(oJSON)
     print(r.text)
-    writeErrListToFile(deviceJson, "device")
+    if obj == "device":
+      writeErrListToFile(oJSON, "device")
+    
+    return False
+  
+  oJSON['id'] = r.json()['data']['id']
+  return True
 
+#Assigns the attributes of objs received from
+#dcim to our default JSONs
+def importAssignAttrs(defJson, toImport, entityType):
+  if entityType == Entity.TENANT.value:
+    defJson['name'] = toImport['name']
+    defJson['description'] = ["ConnectorImported",toImport['description']]
+    defJson['domain'] = toImport['name']
+
+  elif entityType == Entity.SITE.value:
+    defJson['name'] = toImport['name']
+    defJson['description'] = ["ConnectorImported",toImport['description']]
+    defJson['domain'] = 'Exaion'
+    defJson['attributes']['address'] = toImport['physical_address']
+
+  elif entityType == Entity.BLDG.value:
+    defJson['name'] = toImport['name']
+    defJson['description'] = ["ConnectorImported",toImport['description']]
+    defJson['domain'] = 'Exaion'
+
+  elif entityType == Entity.ROOM.value:
+    defJson['domain'] = 'Exaion'
+    defJson['name'] = toImport['name']
+    defJson["description"] = ["ConnectorImported",toImport['description']]
+
+  elif entityType == Entity.RACK.value:
+    defJson['domain'] = 'Exaion'
+    defJson['name'] = toImport['name']
+    defJson['attributes']['height'] = toImport['u_height']
+
+
+  return defJson
+
+#Gets Respective JSON
 def getListFromFile(entType):
     filename = "defaultJSON/"+entType+".json"
     with open(filename) as f:
@@ -68,6 +150,7 @@ def getListFromFile(entType):
 
     return json.loads(objList)
 
+#Write the unimported objects to file
 def writeErrListToFile(devList, entType):
   filename = "./"+entType+"ErrList.json"
   print(filename)
@@ -75,7 +158,217 @@ def writeErrListToFile(devList, entType):
   with open(filename, 'a') as f:
     json.dump(devList, f)
 
-#START
+def setupPlaceholderUnderObj(entityType,id,did):
+  #id -> use as PID for placeholder
+  childInt = entityType + 1
+  childEnt = entIntToStr(childInt).lower()
+
+  entStr = entIntToStr(entityType).lower()
+
+  pRes = requests.get(API+"/"+entStr+"s/"+id, headers=head)
+  if pRes.status_code != 200:
+    print("Error while getting parent for placeholder")
+    print("URL:",API+"/"+entStr+"s/"+id)
+    print("Entity:", entityType)
+    print("ID:", id)
+    print("Now exiting")
+    sys.exit()
+
+
+
+  cJSON = getListFromFile(childEnt)
+  cJSON['name'] = childEnt+"A"
+  cJSON['parentId'] = id
+  cJSON['domain'] = pRes.json()['data']['domain']
+
+  res = postObj(cJSON['name'], id, cJSON, childEnt)
+  if res == False:
+    print("Error while creating placeholder for OBJ:", id)
+    sys.exit()
+
+  #getCorrespondingDict(entityType)[did] = (cJSON['name'], cJSON['id'])
+  parentIdx = (pRes.json()['data']['name'], cJSON['name'])
+  getCorrespondingDict(childInt)[parentIdx] = (cJSON['name'], cJSON['id'])
+
+  
+
+    
+def getPid(entityType, receivedObj):
+  if entityType == Entity.TENANT.value:
+    return None
+
+  if entityType == Entity.SITE.value:
+    if 'tenant' in receivedObj:
+      if receivedObj['tenant']!= None and 'name' in receivedObj['tenant'] and 'id' in receivedObj['tenant']:
+        if receivedObj['tenant']['id'] in tenantDict:
+          tup = tenantDict[receivedObj['tenant']['id']]
+          return tup[1]
+
+        #Tenant name & DCIM ID given but not found
+        tenantInt = Entity.TENANT.value
+        tenantStr = entIntToStr(tenantInt).lower()
+        tenantDID = receivedObj['tenant']['id']
+        tenantName = receivedObj['tenant']['name']
+        tJson = getListFromFile(tenantInt)
+        tJson['domain'] = tenantName
+
+        #Create tenant
+        res = postObj(tenantName, None, tJSON, tenantStr)
+        if res == False:
+          print('Unable to create missing tenant')
+          print('Now exiting')
+          sys.exit()
+
+        getCorrespondingDict(tenantInt)[tenantDID] = (tenantName, tJson['id'])
+        return tJson['id']
+
+    #Use Exaion otherwise.
+    #It's DCIM ID was assigned -1
+    #for our purposes
+    tup = tenantDict[-1]
+    return tup[1]
+
+        
+
+  if entityType == Entity.BLDG.value:
+    if 'site' in receivedObj:
+      if receivedObj['site']!= None and 'name' in receivedObj['site'] and 'id' in receivedObj['site']:
+        if receivedObj['site']['id'] in siteDict:
+          #TUP -> (name, ID)
+          tup = siteDict[receivedObj['site']['id']]
+          print('TUP1 return site name found')
+          return tup[1]
+
+        #else site name given but not found
+        print('Site name given but not found')
+        sys.exit()
+
+    if 'tenant' in receivedObj:
+      if receivedObj['tenant'] != None and 'name' in receivedObj['tenant'] and 'id' in receivedObj['tenant']:
+        if receivedObj['tenant']['id'] in tenantDict:
+          #TUP -> (name, ID)
+          tDid = receivedObj['tenant']['id']
+          tup = tenantDict[tDid]
+          tid = tup[1]
+
+          #Check if placeholder is present
+          #otherwise create it
+          if (tup[0], 'siteA') not in siteDict:
+            setupPlaceholderUnderObj(Entity.TENANT.value, tid, tDid)
+
+          subTup = siteDict[[tup[0], 'siteA']]
+          print('SUBTUP1 return tenant name found')
+          return subTup[1]
+
+        #else tenant name given but not found
+        print('Tenant name given but not found')
+        sys.exit()
+
+    else: #Both not present
+      #Use Exaion, it should be there by default
+      #Exaion will always have ID key of -1 for
+      #our purposes
+      tenantTup = tenantDict[-1]
+      if (tenantTup[0], 'siteA') not in siteDict:
+        setupPlaceholderUnderObj(Entity.TENANT.value, tenantTup[1], -1)
+      
+      subTup = siteDict[[tenantTup[0], 'siteA']]
+      print('SUBTUP1 return nothing name found')
+      return subTup[1]
+
+  
+
+
+
+
+
+#Generate Placeholder objects in case 
+#some objects don't have parents/ancestors
+def setupPlaceholders():
+  idx = Entity.TENANT.value
+  pid = None
+  global eid
+
+  entity = entIntToStr(idx).lower()
+  entJSON = getListFromFile(entity)
+  entJSON['domain'] = 'Exaion'
+
+  postObj('Exaion', None, entJSON, entity)
+
+  r = requests.post(API+"/"+entity+"s", 
+                                    headers=head, json=entJSON)
+
+  if r.status_code != 201:
+    print("Error while creating "+entity+"!")
+    print(entJSON)
+    print(r.text)
+    sys.exit()
+
+  print('Assigning EID')
+  eid = r.json()['data']['id'] #Lags behind for next iter
+  
+  #eid = r.json()['data']['id']
+
+"""   while idx < Entity.DEVICE.value+1:
+    entity = entIntToStr(idx).lower()
+    entJSON = getListFromFile(entity)
+    entJSON['domain'] = 'Exaion'
+    entJSON['parentId'] = pid
+
+    if idx == Entity.TENANT.value:
+      entJSON['name'] = name = 'Exaion'
+    else:
+      entJSON['name'] = name = entity+"A"
+
+    r = requests.post(API+"/"+entity+"s", 
+                                    headers=head, json=entJSON)
+
+    if r.status_code != 201:
+      print("Error while creating "+entity+"!")
+      print(entJSON)
+      print(r.text)
+      sys.exit()
+
+
+    pid = r.json()['data']['id'] #Lags behind for next iter
+    placeHolderDict[entity] = r.json()['data']['id']
+    if entJSON['name'] == 'Exaion':
+      print('Assigning EID')
+      eid = r.json()['data']['id']
+
+    idx += 1 """
+
+def getCorrespondingDict(entityType):
+  if entityType == Entity.TENANT.value:
+    return tenantDict
+  elif entityType == Entity.SITE.value:
+    return siteDict
+  elif entityType == Entity.BLDG.value:
+    return bldgDict
+  elif entityType == Entity.ROOM.value:
+    return roomDict
+  elif entityType == Entity.RACK.value:
+    return rackDict
+  elif entityType == Entity.DEVICE.value:
+    return deviceDict
+
+def getCorrespondingArr(entityType):
+  if entityType == Entity.TENANT.value:
+    return tenantArr
+  elif entityType == Entity.SITE.value:
+    return siteArr
+  elif entityType == Entity.BLDG.value:
+    return bldgArr
+  elif entityType == Entity.ROOM.value:
+    return roomArr
+  elif entityType == Entity.RACK.value:
+    return rackArr
+  elif entityType == Entity.DEVICE.value:
+    return devArr
+
+
+
+#Parse Args START //////////
 args = vars(parser.parse_args())
 if ('NBURL' not in args or args['NBURL'] == None):
     print('Netbox URL not specified... using default URL')
@@ -98,63 +391,101 @@ if args['NBtoken'] != None:
   dcim_token = args['NBtoken']
   dhead = {'Authorization': 'Token {}'.format(dcim_token)}
 
+#Parse Args END //////////
 
-#Create EXAION Tenant
-exaionJson = {
-  "name": "Exaion",
-  "id": None,  #API doesn't allow non Server Generated IDs
-  "parentId": None,
-  "category": "tenant",
-  "description": ["ConnectorImported","Tenant for Herve", "A Place holder"],
-  "domain": "Exaion",
-  "attributes": {
-    "color": "FFFFFF",
-    "mainContact": None,
-    "mainPhone": None,
-    "mainEmail": None
-  }
-}
+#Setup Placeholder objs
+#setupPlaceholders()
 
-print(API)
-r = requests.post(API+"/tenants", 
-  headers=head, data=json.dumps(exaionJson))
-if r.status_code != 201:
-  print("Error while creating tenant!")
-  print(r.text)
-  exit()
-
-if "data" in r.json():
-  print("OK we are on traditional setup")
-  eid = r.json()["data"]["id"]
-elif "id" in r.json()["tenant"]: 
-    print("We have the OG response")
-    print("Now setting the Exaion ID...")
-    eid = r.json()["tenant"]["id"]
-else:
-  print("this doesn't work")
-  
-
-# Obtain the big list of Tenants
-# Then put into OGREDB
-tenantJson = getListFromFile("tenant")
-r = requests.get(NBURL+"/tenancy/tenants/", 
-headers=dhead)
-print("Number of tenants to be added: ", len(r.json()['results']))
 x=0
-for tenant in r.json()['results']:
-  tenantJson['name'] = tenant['name']
-  tenantJson['description'] = ["ConnectorImported",tenant['description']]
-  tenantJson['domain'] = tenant['name']
-  print(x, ": ", tenant['name'])
-  x+=1
-  pr = requests.post(API+"/tenants",
-     headers=head, data=json.dumps(tenantJson) )
-  if pr.status_code != 201:
-    print("Error while adding tenants!")
-    print(pr.text)
-    exit()
+end = Entity.OBJ_TEMPLATE.value
+pid = None
 
-print("Successfully added tenants")
+while(x < end):
+  entity = (entIntToStr(x)).lower()
+  jsonObj = getListFromFile(entity)
+  if x == Entity.TENANT.value:
+    URL = NBURL+"/tenancy/"+entity+"s/"
+
+  if x == Entity.SITE.value:
+    URL = NBURL+"/dcim/"+entity+"s/"
+    pid = eid
+
+  if x == Entity.BLDG.value:
+    URL = NBURL+"/dcim/"+entity+"s/"
+
+  if x == Entity.ROOM.value:
+    URL = NBURL+"/dcim/locations/"
+
+  if x == Entity.RACK.value:
+    URL = NBURL+"/dcim/"+entity+"s/"
+
+
+
+  r = requests.get(URL, headers=dhead)
+  if r.status_code == 200:
+    print("Number of "+entity+"s to be added: ", len(r.json()['results']))
+
+
+    #Iter thru all objs, assign attrs and post
+    for i in  r.json()['results']:
+      jsonObj = importAssignAttrs(jsonObj, i, x)    
+
+      #Get ParentID before posting
+      if x > Entity.TENANT.value:
+        #pid = getCorrespondingArr(x - 1)
+        pid = getPid(x, i)
+
+      res = postObj(jsonObj['name'], pid, jsonObj, entity)
+      if res == False and jsonObj['name'] != 'Exaion':
+        sys.exit()
+
+      #getCorrespondingDict(x)[jsonObj['name']] = jsonObj['id']
+      #getCorrespondingArr(x).append((jsonObj['name'], jsonObj['id']))
+      if jsonObj['name'] == 'Exaion':
+        i['id'] = -1
+      
+      getCorrespondingDict(x)[i['id']] = (jsonObj['name'], jsonObj['id'])
+
+
+  else:
+    #This means DCIM API doesn't have obj types
+    #so we need to make placeholders
+    '''print(entIntToStr(x))
+    parentInt = x-1
+    pArr = getCorrespondingArr(parentInt)
+    for i in pArr:
+      postObj(jsonObj['name'], i[1], jsonObj, entIntToStr(x).lower())
+      getCorrespondingArr(x).append((jsonObj['name'], jsonObj['id']))'''
+
+    prevDict = getCorrespondingDict(x-1)
+    currDict = getCorrespondingDict(x)
+    for i in prevDict:
+      setupPlaceholderUnderObj(x-1, str(prevDict[i][1]), None)
+
+      #Adding placeholder inserts unwanted keys into curr level dict
+      #so we need to fix that
+      correctKey = ()
+      if isinstance(i, tuple):
+        tmp = list(i)
+        tmp += entIntToStr(x).lower()+"A"
+        correctKey = tuple(tmp)
+      else:
+        correctKey = (i)
+
+      wrongKey = (prevDict[i][0], entIntToStr(x).lower()+"A")
+      
+      v = currDict[wrongKey]
+      currDict.pop(wrongKey)
+      currDict[correctKey] = v
+      
+    
+
+  print('Successfully added '+entity+'s')
+  x+=1
+
+sys.exit()
+
+
 
 # Obtain the big list of Sites
 # Store into MDB and add
@@ -165,25 +496,7 @@ print("Adding Sites...")
 siteJson = getListFromFile("site")
 x = 0 
 for entry in r.json()['results']:
-#  siteJson = {
-#  "name": entry['name'],
-#  "id": None, #API doesn't allow non Server Generated IDs
-#  "parentId": eid, #No site in Netbox has an existing tenant => place in Exaion 
-#  "category": "site",
-#  "description": [entry['description']],
-#  "domain": "Connector Domain",
-#  "attributes": {
-#    "orientation": "NW",
-#    "usableColor": "ExaionColor",
-#    "reservedColor": "ExaionColor",
-#    "technicalColor": "ExaionColor",
-#    "address": entry['physical_address'],
-#    "zipcode": None,
-#    "city": None,
-#    "country": None,
-#    "gps": None # None of the sites have coordinates
-#  }
-#}
+
   siteJson['name'] = entry['name']
   siteJson['description'] = ["ConnectorImported",entry['description']]
   siteJson['parentId'] = eid
@@ -200,34 +513,77 @@ for entry in r.json()['results']:
 
   siteID = pr.json()['data']
   print("Adding corresponding building")
-  bldgJson = {
-  "name": "BldgA",
-  "id": None, #API doesn't allow non Server Generated IDs
-  "parentId": siteID['id'],
-  "category": "building",
-  "description": ["ConnectorImported","Some Building"],
-  "domain": "Exaion",
-  "attributes": {
-    "posXY": "99,99",
-    "posXYUnit": "mm",
-    "posZ":"99",
-    "posZUnit": "mm",
-    "size":"99",
-    "sizeUnit": "mm",
-    "height":"99",
-    "heightUnit": "mm",
-    "nbFloors":"99"
-    }
-  }
+  #bldgJson = {
+  #"name": "BldgA",
+  #"id": None, #API doesn't allow non Server Generated IDs
+  #"parentId": siteID['id'],
+  #"category": "building",
+  #"description": ["ConnectorImported","Some Building"],
+  #"domain": "Exaion",
+  #"attributes": {
+  #  "posXY": "99,99",
+  #  "posXYUnit": "mm",
+  #  "posZ":"99",
+  #  "posZUnit": "mm",
+  #  "size":"99",
+  #  "sizeUnit": "mm",
+  #  "height":"99",
+  #  "heightUnit": "mm",
+  #  "nbFloors":"99"
+  #  }
+  #}
+
+  bldgJson = getListFromFile("bldg")
+  bldgJson["parentId"] = siteID['id']
+  bldgJson["domain"] = "Exaion"
+  bldgJson["description"] = ["ConnectorImported","Some Building"]
   tmpr = requests.post(API+"/buildings",
   headers=head, data=json.dumps(bldgJson) )
+  if tmpr.status_code != 201:
+    print("Error while adding bldg!")
+    print(tmpr.text)
+    exit()
+
   siteNamebldgIDDict[siteID['name']] = tmpr.json()['data']['id']
   print(bldgJson['name'])
+
+  print("Adding corresponding room")
+  roomJson = getListFromFile("bldg")
+  roomJson["parentId"] = tmpr.json()["data"]["id"]
+  roomJson["domain"] = "Exaion"
+  roomJson["name"] = "RoomA"
+  roomJson["description"] = ["ConnectorImported"]
+  roomJson["attributes"] = {
+    "floorUnit":'m',
+      "posXY": "99,99",
+      "posXYUnit": "mm",
+      "posZ":"99",
+      "posZUnit": "mm",
+      "size":"99",
+      "sizeUnit": "mm",
+      "height":"99",
+      "heightUnit": "mm",
+      "nbFloors":"99",
+      "orientation":"-E-N"
+  }
+
+  tmpr2 = requests.post(API+"/rooms",
+  headers=head, data=json.dumps(roomJson) )
+  if tmpr2.status_code != 201:
+    print("Error while adding room!")
+    print(tmpr2.text)
+    exit()
+
+  bldgIDRoomIDDict[tmpr.json()['data']['id']] = tmpr2.json()['data']['id']
+
+
 
 
 # Obtain the big list of Rooms (Rack-Groups)
 # Store using tenant 'Exaion' and site name
-r = requests.get(NBURL+"/dcim/rack-groups/",
+#r = requests.get(NBURL+"/dcim/rack-groups/",
+# headers=dhead)
+'''r = requests.get(NBURL+"/dcim/racks/",
  headers=dhead)
 x = 0
 for idx in r.json()['results']:
@@ -235,7 +591,7 @@ for idx in r.json()['results']:
   roomJson = {
     "id": None,
     "name": idx['name'],
-    "parentId": siteNamebldgIDDict[idx['site']['name']],
+    "parentId": bldgIDRoomIDDict[siteNamebldgIDDict[idx['site']['name']]],
     "category": "room",
     "domain": "Exaion",
     "description": [
@@ -259,29 +615,31 @@ for idx in r.json()['results']:
   tmpr = requests.post(API+"/rooms",
   headers=head, data=json.dumps(roomJson) )
   roomNameIDDict[idx['name']] = tmpr.json()['data']['id']
-  x+=1
+  x+=1'''
 
 
 # Obtain the big list of Racks
 # store using the room Name & 
 # corresponding ID
-r = requests.get(NBURL+"/dcim/racks/",
+r = requests.get(NBURL+"/dcim/racks/?limit=0",
  headers=dhead)
-totalRacks = (requests.get(r.json()['next'], headers=dhead)).json()['results'] + r.json()['results']
+totalRacks = r.json()['results']
 print("Number of Racks to be added: ", len(totalRacks))
 print("Adding Racks...")
 x = 0
 for idx in totalRacks:
   #print(x, ": ", idx['name'])
-  if idx['group'] == None:
+  #if idx['group'] == None:
     #name = 
-    pid = roomNameIDDict[GetRoomName(idx['site']['name'], 
-      siteNamebldgIDDict[idx['site']['name']])]
-    name = idx['name']
-  else:
-    name = idx['name']
-    pid = roomNameIDDict[idx['group']['name']]
-  print(x, ": ", str(name))
+    #pid = roomNameIDDict[GetRoomName(idx['site']['name'], 
+    #  siteNamebldgIDDict[idx['site']['name']])]
+  pid = bldgIDRoomIDDict[siteNamebldgIDDict[idx['site']['name']]]
+  name = idx['name']
+  #else:
+  #  print('PROBLEM CASE ENCOUNTERED')
+  #  name = idx['name']
+  #  pid = roomNameIDDict[idx['group']['name']]
+  #print(x, ": ", str(name))
   rackJson = {
     "id": None,
     "name": str(name),
@@ -318,7 +676,6 @@ for idx in totalRacks:
     print('Error with rack: ', str(name))
     print(tmpr.json()['message'])
     writeErrListToFile(rackJson, "rack")
-
 
 
 #GET Devices from Netbox
@@ -377,7 +734,7 @@ for idx in devices:
           if (idx['site']['name'] in siteNamebldgIDDict and
             idx['rack']['name'] in rackNameIDDict) :
             numDevicesValid+=1
-            postDevice(idx['name'], rackNameIDDict[idx['rack']['name']], deviceJson)
+            postObj(idx['name'], rackNameIDDict[idx['rack']['name']], deviceJson, "device")
           
           elif (idx['site']['name'] in siteNamebldgIDDict and
             idx['rack']['name'] not in rackNameIDDict) :
@@ -546,3 +903,5 @@ print("Num devices with NULL Rack: ", numRacksNull)
 print("Num devices with nameless Rack: ", numNamelessRacks)
 print("Num devices with unfindable Racks: ", numRackExistButNotFound)
 #writeErrListToFile(deviceErrList)
+
+

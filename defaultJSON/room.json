@@ -19,6 +19,7 @@
         "height": "0",
         "heightUnit": "m",
         "technical": "0",
-        "reserved": "0"
+        "reserved": "0",
+        "floorUnit":"m"
     }
   }
