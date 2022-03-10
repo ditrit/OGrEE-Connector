@@ -64,15 +64,6 @@ def entIntToStr(ent):
 
 
 # Helper func defs
-# Get a corresponding room
-# if 'group' is missing
-# in json
-def GetRoomName(siteName, BldgID):
-  pr = requests.get(
-    API+"/buildings/"+str(BldgID)+"/rooms",
-     headers=head )
-  return pr.json()['data']['objects'][0]['name']
-
 def postObj(name, pid, oJSON, obj):
   oJSON['name'] = name
   oJSON['parentId'] = pid
@@ -185,7 +176,6 @@ def fixDictKey(correct, wrong, map):
   map[correct] = v
   
 
-    
 def getPid(entityType, receivedObj):
   if entityType == Entity.TENANT.value:
     return None
@@ -234,6 +224,13 @@ def getPid(entityType, receivedObj):
         #else site name given but not found
         sys.exit()
 
+
+    #Use Exaion,(ID key of -1)
+    #or tenant if present
+    tDid = receivedObj['tenant']['id']
+    tup = tenantDict[tDid]
+    tid = tup[1]
+
     if 'tenant' in receivedObj:
       if receivedObj['tenant'] != None and 'name' in receivedObj['tenant'] and 'id' in receivedObj['tenant']:
         if receivedObj['tenant']['id'] in tenantDict:
@@ -242,27 +239,13 @@ def getPid(entityType, receivedObj):
           tup = tenantDict[tDid]
           tid = tup[1]
 
-          #Check if placeholder is present
-          #otherwise create it
-          if (tup[0], 'siteA') not in siteDict:
-            setupPlaceholderUnderObj(Entity.TENANT.value, tid, tDid)
+    #Check if placeholder is present
+    #otherwise create it
+    if (tup[0], 'siteA') not in siteDict:
+      setupPlaceholderUnderObj(Entity.TENANT.value, tid, tDid)
 
-          subTup = siteDict[(tup[0], 'siteA')]
-          return subTup[1]
-
-        #else tenant name given but not found
-        sys.exit()
-
-    else: #Both not present
-      #Use Exaion, it should be there by default
-      #Exaion will always have ID key of -1 for
-      #our purposes
-      tenantTup = tenantDict[-1]
-      if (tenantTup[0], 'siteA') not in siteDict:
-        setupPlaceholderUnderObj(Entity.TENANT.value, tenantTup[1], -1)
-      
-      subTup = siteDict[(tenantTup[0], 'siteA')]
-      return subTup[1]
+    subTup = siteDict[(tup[0], 'siteA')]
+    return subTup[1]
 
   
   if entityType == Entity.ROOM.value:
@@ -297,6 +280,12 @@ def getPid(entityType, receivedObj):
         print('Site name given but not found')
         sys.exit()
 
+
+    #No ancestors present so let's use Exaion, index is -1
+    #or tenant if it is present
+    tDid = -1
+    tup = tenantDict[tDid]
+    tid = tup[1]
     if 'tenant' in receivedObj:
       if receivedObj['tenant'] != None and 'name' in receivedObj['tenant'] and 'id' in receivedObj['tenant']:
         if receivedObj['tenant']['id'] in tenantDict:
@@ -304,44 +293,23 @@ def getPid(entityType, receivedObj):
           tup = tenantDict[tDid]
           tid = tup[1]
 
-          if (tup[0], 'siteA') not in siteDict:
-            setupPlaceholderUnderObj(Entity.TENANT.value, tid, did)
+    if (tup[0], 'siteA') not in siteDict:
+      setupPlaceholderUnderObj(Entity.TENANT.value, tid, did)
 
-          if (tup[0], 'siteA', 'bldgA') not in bldgDict:
-            sup = siteDict[(tup[0], 'siteA')]
-            sid = sup[1]
-            setupPlaceholderUnderObj(Entity.SITE.value, sid, None)
+    if (tup[0], 'siteA', 'bldgA') not in bldgDict:
+      sup = siteDict[(tup[0], 'siteA')]
+      sid = sup[1]
+      setupPlaceholderUnderObj(Entity.SITE.value, sid, None)
             
-            #Unwanted key was inserted by function call
-            #let's fix that
-            v = bldgDict[('siteA', 'bldgA')]
-            bldgDict.pop(('siteA', 'bldgA'))
-            bldgDict[(tup[0], 'siteA', 'bldgA')] = v
+    #Unwanted key was inserted by function call
+    #let's fix that
+    v = bldgDict[('siteA', 'bldgA')]
+    bldgDict.pop(('siteA', 'bldgA'))
+    bldgDict[(tup[0], 'siteA', 'bldgA')] = v
 
-          subTup = bldgDict[(tup[0], 'siteA', 'bldgA')]
-          return subTup[1]
+    subTup = bldgDict[(tup[0], 'siteA', 'bldgA')]
+    return subTup[1]
 
-    else: #No ancestors present so let's use Exaion, index is -1
-      tDid = -1
-      tup = tenantDict[tDid]
-      tid = tup[1]
-
-      if (tup[0], 'siteA') not in siteDict:
-        setupPlaceholderUnderObj(Entity.TENANT.value, tid, None)
-
-      if (tup[0], 'siteA', 'bldgA') not in bldgDict:
-        sup = siteDict[(tup[0], 'siteA')]
-        sid = sup[1]
-        setupPlaceholderUnderObj(Entity.SITE.value, sid, None)
-            
-        #Unwanted key was inserted by function call
-        #let's fix that
-        v = bldgDict[('siteA', 'bldgA')]
-        bldgDict.pop(('siteA', 'bldgA'))
-        bldgDict[(tup[0], 'siteA', 'bldgA')] = v
-
-      subTup = bldgDict[(tup[0], 'siteA', 'bldgA')]
-      return subTup[1]
 
   if entityType == Entity.RACK.value:
     if 'location' in receivedObj:
@@ -388,6 +356,11 @@ def getPid(entityType, receivedObj):
           subTup = roomDict[(sTup[0], 'bldgA', 'roomA')]
           return subTup[1]
 
+
+    #No ancestor found so Exaion or tenant if present
+    tDid = -1
+    tup = tenantDict[tDid]
+    tid = tup[1]
     if 'tenant' in receivedObj:
       if receivedObj['tenant'] != None and 'name' in receivedObj['tenant'] and 'id' in receivedObj['tenant']:
         if receivedObj['tenant']['id'] in tenantDict:
@@ -395,64 +368,33 @@ def getPid(entityType, receivedObj):
           tup = tenantDict[tDid]
           tid = tup[1]
 
-          if (tup[0], 'siteA') not in siteDict:
-            setupPlaceholderUnderObj(Entity.TENANT.value, tid, None)
+    if (tup[0], 'siteA') not in siteDict:
+      setupPlaceholderUnderObj(Entity.TENANT.value, tid, None)
 
-          if (tup[0], 'siteA', 'bldgA') not in bldgDict:
-            sTup = siteDict[(tup[0], 'siteA')]
-            sid = sTup[1]
-            setupPlaceholderUnderObj(Entity.SITE.value, sid, None)
+    if (tup[0], 'siteA', 'bldgA') not in bldgDict:
+      sTup = siteDict[(tup[0], 'siteA')]
+      sid = sTup[1]
+      setupPlaceholderUnderObj(Entity.SITE.value, sid, None)
 
-            #Unwanted key was inserted at this point
-            #when diff between entityType and found key is 2+
-            v = bldgDict[('siteA', 'roomA')]
-            bldgDict.pop(('siteA', 'roomA'))
-            bldgDict[(tup[0], 'bldgA', 'roomA')] = v
+    #Unwanted key was inserted at this point
+    #when diff between entityType and found key is 2+
+    v = bldgDict[('siteA', 'roomA')]
+    bldgDict.pop(('siteA', 'roomA'))
+    bldgDict[(tup[0], 'bldgA', 'roomA')] = v
 
-          if (tup[0], 'siteA', 'bldgA', 'roomA') not in roomDict:
-            bTup = bldgDict[(tup[0], 'siteA', 'bldgA')]
-            bid = bTup[1]
-            setupPlaceholderUnderObj(Entity.BLDG.value, bid, None)
+    if (tup[0], 'siteA', 'bldgA', 'roomA') not in roomDict:
+      bTup = bldgDict[(tup[0], 'siteA', 'bldgA')]
+      bid = bTup[1]
+      setupPlaceholderUnderObj(Entity.BLDG.value, bid, None)
 
-            #Unwanted key was inserted at this point
-            #when diff between entityType and found key is 2+
-            v = roomDict[('bldgA', 'roomA')]
-            roomDict.pop(('bldgA', 'roomA'))
-            roomDict[(tup[0], 'siteA', 'bldgA', 'roomA')] = v
+    #Unwanted key was inserted at this point
+    #when diff between entityType and found key is 2+
+    v = roomDict[('bldgA', 'roomA')]
+    roomDict.pop(('bldgA', 'roomA'))
+    roomDict[(tup[0], 'siteA', 'bldgA', 'roomA')] = v
 
-          rTup = roomDict[(tup[0], 'siteA', 'bldgA', 'roomA')]
-          return rTup[1]
-
-    else: #No valid ancestor present so let's use Exaion
-      tup = tenantDict[-1]
-      tid = tup[1]
-      if (tup[0], 'siteA') not in siteDict:
-        setupPlaceholderUnderObj(Entity.TENANT.value, tid, None)
-
-      if (tup[0], 'siteA', 'bldgA') not in bldgDict:
-        sTup = siteDict[(tup[0], 'siteA')]
-        sid = sTup[1]
-        setupPlaceholderUnderObj(Entity.SITE.value, sid, None)
-
-        #Unwanted key was inserted at this point
-        #when diff between entityType and found key is 2+
-        v = bldgDict[('siteA', 'bldgA')]
-        bldgDict.pop(('siteA', 'bldgA'))
-        bldgDict[(tup[0], 'bldgA', 'roomA')] = v
-
-      if (tup[0], 'siteA', 'bldgA', 'roomA') not in roomDict:
-        bTup = bldgDict[(tup[0], 'siteA', 'bldgA')]
-        bid = bTup[1]
-        setupPlaceholderUnderObj(Entity.BLDG.value, bid, None)
-
-        #Unwanted key was inserted at this point
-        #when diff between entityType and found key is 2+
-        v = roomDict[('bldgA', 'roomA')]
-        roomDict.pop(('bldgA', 'roomA'))
-        roomDict[(tup[0], 'siteA', 'bldgA', 'roomA')] = v
-
-      rTup = roomDict[(tup[0], 'siteA', 'bldgA', 'roomA')]
-      return rTup[1]
+    rTup = roomDict[(tup[0], 'siteA', 'bldgA', 'roomA')]
+    return rTup[1]
 
 
   if entityType == Entity.DEVICE.value:
@@ -502,9 +444,7 @@ def getPid(entityType, receivedObj):
             #Fix incorrect key 
             correctKey = (sTup[0], 'bldgA', 'roomA')
             wrongKey = ('bldgA', 'roomA')
-            v = roomDict[wrongKey]
-            roomDict.pop(wrongKey)
-            roomDict[correctKey] = v
+            fixDictKey(correctKey, wrongKey, roomDict)
 
 
           if (sTup[0], 'bldgA', 'roomA', 'rackA') not in rackDict:
@@ -514,9 +454,6 @@ def getPid(entityType, receivedObj):
             #Fix incorrect key
             correctKey = (sTup[0], 'bldgA', 'roomA', 'rackA')
             wrongKey = ('roomA', 'rackA')
-            #v = rackDict[wrongKey]
-            #rackDict.pop(wrongKey)
-            #rackDict[correctKey] = v
             fixDictKey(correctKey, wrongKey, rackDict)
 
 
@@ -524,6 +461,11 @@ def getPid(entityType, receivedObj):
           addedBySite += 1
           return rTup[1]
 
+
+    #Else check tenant or use Exaion
+    tDid = -1
+    tup = tenantDict[tDid]
+    tid = tup[1]
     if 'tenant' in receivedObj:
       if receivedObj['tenant'] != None and 'name' in receivedObj['tenant'] and 'id' in receivedObj['tenant']:
         if receivedObj['tenant']['id'] in tenantDict:
@@ -531,42 +473,37 @@ def getPid(entityType, receivedObj):
           tup = tenantDict[tDid]
           tid = tup[1]
 
-          if (tup[0], 'siteA') not in siteDict:
-            setupPlaceholderUnderObj(Entity.TENANT.value, tid, None)
+    if (tup[0], 'siteA') not in siteDict:
+      setupPlaceholderUnderObj(Entity.TENANT.value, tid, None)
 
-          if (tup[0], 'siteA', 'bldgA') not in bldgDict:
-            sid = siteDict[(tup[0], 'siteA')][1]
-            setupPlaceholderUnderObj(Entity.SITE.value, sid, None)
-            #Fix incorrect Key
-            correctKey = (tup[0], 'siteA', 'bldgA')
-            wrongKey = ('siteA', 'bldgA')
-            fixDictKey(correctKey, wrongKey, bldgDict)
-
-
-          if (tup[0], 'siteA', 'bldgA', 'roomA') not in roomDict:
-            bid = bldgDict[(tup[0], 'siteA', 'bldgA')][1]
-            setupPlaceholderUnderObj(Entity.BLDG.value, bid, None)
-            #Fix incorrect Key
-            correctKey = (tup[0], 'siteA', 'bldgA', 'roomA')
-            wrongKey = ('bldgA', 'roomA')
-            fixDictKey(correctKey, wrongKey, roomDict)
-
-          if (tup[0], 'siteA', 'bldgA', 'roomA', 'rackA') not in rackDict:
-            rid = roomDict[(tup[0], 'siteA', 'bldgA', 'roomA')][1]
-            setupPlaceholderUnderObj(Entity.ROOM.value, rid, None)
-            #Fix incorrect Key
-            correctKey = (tup[0], 'siteA', 'bldgA', 'roomA', 'rackA')
-            wrongKey = ('roomA', 'rackA')
-            fixDictKey(correctKey, wrongKey, rackDict)
-
-          subTup = rackDict[(tup[0], 'siteA', 'bldgA', 'roomA', 'rackA')]
-          addedByTenant += 1
-          return subTup[1]
+    if (tup[0], 'siteA', 'bldgA') not in bldgDict:
+      sid = siteDict[(tup[0], 'siteA')][1]
+      setupPlaceholderUnderObj(Entity.SITE.value, sid, None)
+      #Fix incorrect Key
+      correctKey = (tup[0], 'siteA', 'bldgA')
+      wrongKey = ('siteA', 'bldgA')
+      fixDictKey(correctKey, wrongKey, bldgDict)
 
 
+    if (tup[0], 'siteA', 'bldgA', 'roomA') not in roomDict:
+      bid = bldgDict[(tup[0], 'siteA', 'bldgA')][1]
+      setupPlaceholderUnderObj(Entity.BLDG.value, bid, None)
+      #Fix incorrect Key
+      correctKey = (tup[0], 'siteA', 'bldgA', 'roomA')
+      wrongKey = ('bldgA', 'roomA')
+      fixDictKey(correctKey, wrongKey, roomDict)
 
-  incorrectDevCount += 1
+    if (tup[0], 'siteA', 'bldgA', 'roomA', 'rackA') not in rackDict:
+      rid = roomDict[(tup[0], 'siteA', 'bldgA', 'roomA')][1]
+      setupPlaceholderUnderObj(Entity.ROOM.value, rid, None)
+      #Fix incorrect Key
+      correctKey = (tup[0], 'siteA', 'bldgA', 'roomA', 'rackA')
+      wrongKey = ('roomA', 'rackA')
+      fixDictKey(correctKey, wrongKey, rackDict)
 
+    subTup = rackDict[(tup[0], 'siteA', 'bldgA', 'roomA', 'rackA')]
+    addedByTenant += 1
+    return subTup[1]
 
 
 def getCorrespondingDict(entityType):
@@ -582,20 +519,6 @@ def getCorrespondingDict(entityType):
     return rackDict
   elif entityType == Entity.DEVICE.value:
     return deviceDict
-
-def getCorrespondingArr(entityType):
-  if entityType == Entity.TENANT.value:
-    return tenantArr
-  elif entityType == Entity.SITE.value:
-    return siteArr
-  elif entityType == Entity.BLDG.value:
-    return bldgArr
-  elif entityType == Entity.ROOM.value:
-    return roomArr
-  elif entityType == Entity.RACK.value:
-    return rackArr
-  elif entityType == Entity.DEVICE.value:
-    return devArr
 
 
 
@@ -624,11 +547,8 @@ if args['NBtoken'] != None:
 
 #Parse Args END //////////
 
-#Setup Placeholder objs
-#setupPlaceholders()
 
 x=0
-#end = Entity.OBJ_TEMPLATE.value
 end = Entity.DEVICE.value+1
 pid = None
 
@@ -741,232 +661,11 @@ sys.exit()
 
 
 
-
-'''
-#GET Devices from Netbox
-deviceJson = {
-    "name": None,
-    "id": None,
-    "parentId": None,
-    "category": "device",
-    "description": ["ConnectorImported"
-    ],
-    "domain": "Exaion",
-    "attributes": {
-        "posXY": "0",
-        "posXYUnit": "tile",
-        "posZ": "0",
-        "posZUnit": "tile",
-        "size": "0",
-        "sizeUnit": "mm",
-        "height": "0",
-        "heightUnit": "U",
-        "template": "",
-        "orientation": "front",
-        "vendor": "",
-        "type": "",
-        "model": "",
-        "serial": ""
-    }
-}
-
-numDevicesValid = 0
-numDevicesWithSiteWithoutRack = 0
-numDevicesWithRackWithoutSite = 0
-numDevicesWithoutBoth = 0
-numRacksNull = 0
-numRackExistButNotFound = 0
-numNamelessRacks = 0
-res = requests.get(NBURL+"/dcim/devices/?limit=2000",
- headers=dhead)
-r = requests.get(res.json()['next'], headers=dhead)
-devices = res.json()['results'] + r.json()['results']
-#deviceErrList = []
-
-print("Number of Devices to check: ", len(devices))
-print("Checking Devices...")
-x = 0
-for idx in devices:
-  print(x, ": ", idx['name'])
-  #print()
-
-  if 'rack' in idx and 'site' in idx:
-    if idx['rack'] != None and idx['site'] != None:
-      if 'name' in idx['rack'] and 'name' in idx['site']:
-        #Check slightly more
-        if (idx['rack']['name'] != None and idx['site']['name'] != None):
-          #Check Dict 
-          if (idx['site']['name'] in siteNamebldgIDDict and
-            idx['rack']['name'] in rackNameIDDict) :
-            numDevicesValid+=1
-            postObj(idx['name'], rackNameIDDict[idx['rack']['name']], deviceJson, "device")
-          
-          elif (idx['site']['name'] in siteNamebldgIDDict and
-            idx['rack']['name'] not in rackNameIDDict) :
-            numDevicesWithSiteWithoutRack+=1
-            numNamelessRacks+=1
-            writeErrListToFile(idx, "device")
-            #deviceErrList += idx
-
-          elif (idx['site']['name'] not in siteNamebldgIDDict and
-            idx['rack']['name'] in rackNameIDDict) :
-            numDevicesWithRackWithoutSite+=1
-          
-          else: #Both not in Dict
-            numDevicesWithoutBoth+=1
-        
-        elif idx['rack']['name'] != None and idx['site']['name'] == None:
-          #Check Dict
-          if idx['rack']['name'] in rackNameIDDict:
-            numDevicesWithRackWithoutSite+=1
-          else: #Both not in Dict
-            numDevicesWithoutBoth+=1
-            
-
-        elif idx['rack']['name'] == None and idx['site']['name'] != None:
-          #Check Dict
-          if idx['site']['name'] in siteNamebldgIDDict:
-            numRacksNull+=1
-            numDevicesWithSiteWithoutRack+=1
-            writeErrListToFile(idx, "device")
-            #deviceErrList += idx
-          else: #Both not in Dict
-            numDevicesWithoutBoth+=1
-            
-        else: #Rack&Site not Named
-          numDevicesWithoutBoth+=1
-
-      elif 'name' in idx['rack'] and 'name' not in idx['site']:
-        #Check slightly more 2
-        if idx['rack']['name'] != None:
-          #Check dict
-          if idx['rack']['name'] in rackNameIDDict:
-            numDevicesWithRackWithoutSite+=1
-          else: #Both not in Dict
-            numDevicesWithoutBoth+=1
-        
-        else: #Both not named
-          numDevicesWithoutBoth+=1
-
-      elif 'name' not in idx['rack'] and 'name' in idx['site']:
-        #Check slightly more 2
-        if idx['site']['name'] != None:
-          #Check Dict
-          if idx['site']['name'] in siteNamebldgIDDict:
-            numDevicesWithSiteWithoutRack +=1
-            numNamelessRacks+=1
-            writeErrListToFile(idx, "device")
-            #deviceErrList += idx
-          else: #Both not in Dict
-            numDevicesWithoutBoth+=1
-        
-        else: #Both not named
-          numDevicesWithoutBoth+=1
-
-      else: # Name not in both
-        numDevicesWithoutBoth+=1
-
-
-    elif idx['rack'] == None and idx['site'] != None:
-      #Check more 2
-      if 'name' in idx['site']:
-        #Check slightly more
-        if idx['site']['name'] != None:
-          #Check Dict
-          if idx['site']['name'] in siteNamebldgIDDict:
-            numRacksNull+=1
-            numDevicesWithSiteWithoutRack+=1
-            writeErrListToFile(idx, "device")
-            #deviceErrList += idx
-          else: #Name not in both
-            numDevicesWithoutBoth+=1
-        
-        else: #Name not in both
-          numDevicesWithoutBoth+=1
-      
-      else: #Name not in both
-        numDevicesWithoutBoth+=1
-
-    elif idx['rack'] != None and idx['site'] == None:
-      #Check more 2
-      if 'name' in idx['rack']:
-        #Check slightly more
-        if idx['rack']['name'] != None:
-          #Check Dict
-          if idx['rack']['name'] in rackNameIDDict:
-            numDevicesWithRackWithoutSite+=1
-          else: #Name not in both
-            numDevicesWithoutBoth+=1
-
-        else: #Name not in both
-          numDevicesWithoutBoth+=1
-
-      else: #Name not in both
-        numDevicesWithoutBoth+=1
-
-    else: #Both indexes are None
-      numDevicesWithoutBoth+=1
-
-  elif 'rack' in idx and 'site' not in idx:
-    if idx['rack'] != None:
-      #Check more
-      if 'name' in idx['rack']:
-        #Check slightly more
-        if idx['rack']['name'] != None:
-          #Check Dict
-          if idx['rack']['name'] in rackNameIDDict:
-            numDevicesWithRackWithoutSite+=1
-
-          else: #Name not in both
-            numDevicesWithoutBoth+=1
-
-        else: #Name not in both
-          numDevicesWithoutBoth+=1
-
-      else: #No name in both
-        numDevicesWithoutBoth+=1
-
-    else: #No rack no site
-      numDevicesWithoutBoth+=1
-
-  elif 'rack' not in idx and 'site' in idx:
-    if idx['site'] != None:
-      #Check more
-      if 'name' in idx['site']:
-        #Check slightly more
-        if idx['site']['name'] != None:
-          #Check Dict
-          if idx['site']['name'] in rackNameIDDict:
-            numDevicesWithSiteWithoutRack+=1
-            numRacksNull+=1
-            writeErrListToFile(idx, "device")
-            #deviceErrList += idx
-
-          else: #Name not in both
-            numDevicesWithoutBoth+=1
-            
-        else: #Name not in both
-          numDevicesWithoutBoth+=1
-
-      else: #No name in both
-        numDevicesWithoutBoth+=1
-
-    else: #No rack no site
-      numDevicesWithoutBoth+=1
-
-  else:
-    numDevicesWithoutBoth+=1
-  
-  x+=1
-
-
-print("Num devices valid: ", numDevicesValid)
-print("Num devices with Site without Rack: ", numDevicesWithSiteWithoutRack)
-print("Num devices with Rack without Site: ", numDevicesWithRackWithoutSite)
-print("Num devices without both: ", numDevicesWithoutBoth)
-print("Num devices with NULL Rack: ", numRacksNull)
-print("Num devices with nameless Rack: ", numNamelessRacks)
-print("Num devices with unfindable Racks: ", numRackExistButNotFound)
+#print("Num devices valid: ", numDevicesValid)
+#print("Num devices with Site without Rack: ", numDevicesWithSiteWithoutRack)
+#print("Num devices with Rack without Site: ", numDevicesWithRackWithoutSite)
+#print("Num devices without both: ", numDevicesWithoutBoth)
+#print("Num devices with NULL Rack: ", numRacksNull)
+#print("Num devices with nameless Rack: ", numNamelessRacks)
+#print("Num devices with unfindable Racks: ", numRackExistButNotFound)
 #writeErrListToFile(deviceErrList)
-'''
-
