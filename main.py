@@ -27,11 +27,14 @@ dhead = {'Authorization': 'Token {}'.format(dcim_token)}
 
 # EXAION ID & Maps
 eid = 0
-placeHolderDict = {}
-tenantNameIDDict = {}
-siteNamebldgIDDict = {}
-roomNameIDDict = {}
-rackNameIDDict = {}
+
+#Dev Count
+correctDevCount = 0
+incorrectDevCount = 0
+addedByRoom = 0
+addedByBldg = 0
+addedBySite = 0
+addedByTenant = 0
 
 #Maps for tracking added objs
 #{DCIM-ID: (name, API-ID)}
@@ -42,30 +45,7 @@ roomDict = {}
 rackDict = {}
 deviceDict = {}
 
-#Tuple arrays for tracking added objs
-#[ (name,ID), ... ]
-tenantArr = []
-siteArr = []
-bldgArr = []
-roomArr = []
-rackArr = []
-devArr = []
-
-#The dcim api doesn't have buildings and rooms so they are
-#added as place holders
-#bldgs will only have 1 room each
-bldgIDRoomIDDict ={} 
-
-#JSON Dicts
-exaionJson = {}
-tenantJson = {}
-siteJson = {}
-bldgJson = {}
-roomJson = {}
-rackJson = {}
-deviceJson = {}
-
-
+#ENUM Declaration and funcs
 class Entity(Enum):
     TENANT = 0
     SITE = 1
@@ -139,10 +119,15 @@ def importAssignAttrs(defJson, toImport, entityType):
     defJson['name'] = toImport['name']
     defJson['attributes']['height'] = toImport['u_height']
 
+  elif entityType == Entity.DEVICE.value:
+    defJson['domain'] = 'Exaion'
+    defJson['name'] = toImport['name']
+
+
 
   return defJson
 
-#Gets Respective JSON
+#Gets Respective Default JSON
 def getListFromFile(entType):
     filename = "defaultJSON/"+entType+".json"
     with open(filename) as f:
@@ -192,6 +177,12 @@ def setupPlaceholderUnderObj(entityType,id,did):
   parentIdx = (pRes.json()['data']['name'], cJSON['name'])
   getCorrespondingDict(childInt)[parentIdx] = (cJSON['name'], cJSON['id'])
 
+#If inserting placeholder with ancestors greater than 2
+#the inserted key for the dict maps will be wrong
+def fixDictKey(correct, wrong, map):
+  v = map[wrong]
+  map.pop(wrong)
+  map[correct] = v
   
 
     
@@ -464,64 +455,119 @@ def getPid(entityType, receivedObj):
       return rTup[1]
 
 
-
-
-
-#Generate Placeholder objects in case 
-#some objects don't have parents/ancestors
-def setupPlaceholders():
-  idx = Entity.TENANT.value
-  pid = None
-  global eid
-
-  entity = entIntToStr(idx).lower()
-  entJSON = getListFromFile(entity)
-  entJSON['domain'] = 'Exaion'
-
-  postObj('Exaion', None, entJSON, entity)
-
-  r = requests.post(API+"/"+entity+"s", 
-                                    headers=head, json=entJSON)
-
-  if r.status_code != 201:
-    print("Error while creating "+entity+"!")
-    print(entJSON)
-    print(r.text)
-    sys.exit()
-
-  print('Assigning EID')
-  eid = r.json()['data']['id'] #Lags behind for next iter
+  if entityType == Entity.DEVICE.value:
+    global correctDevCount 
+    global incorrectDevCount 
+    global addedByRoom 
+    global addedByBldg 
+    global addedBySite 
+    global addedByTenant
   
-  #eid = r.json()['data']['id']
+    if 'rack' in receivedObj:
+      if receivedObj['rack'] != None and 'name' in receivedObj['rack'] and 'id' in receivedObj['rack']:
+        if receivedObj['rack']['id'] in rackDict:
+          rTup = rackDict[receivedObj['rack']['id']]
+          correctDevCount += 1
+          return rTup[1]
 
-"""   while idx < Entity.DEVICE.value+1:
-    entity = entIntToStr(idx).lower()
-    entJSON = getListFromFile(entity)
-    entJSON['domain'] = 'Exaion'
-    entJSON['parentId'] = pid
+    if 'location' in receivedObj:
+      if receivedObj['location'] != None and 'name' in receivedObj['location'] and 'id' in receivedObj['location']:
+        if receivedObj['location']['id'] in roomDict:
+          rDid = receivedObj['location']['id']
+          rTup = roomDict[rDid]
+          rid = rTup[1]
 
-    if idx == Entity.TENANT.value:
-      entJSON['name'] = name = 'Exaion'
-    else:
-      entJSON['name'] = name = entity+"A"
-
-    r = requests.post(API+"/"+entity+"s", 
-                                    headers=head, json=entJSON)
-
-    if r.status_code != 201:
-      print("Error while creating "+entity+"!")
-      print(entJSON)
-      print(r.text)
-      sys.exit()
+          if (rTup[0], 'rackA') not in rackDict:
+            setupPlaceholderUnderObj(Entity.ROOM.value, rid, None)
+          
+          subTup = rackDict[(rTup[0], 'rackA')]
+          addedByRoom += 1
+          return subTup[1]
 
 
-    pid = r.json()['data']['id'] #Lags behind for next iter
-    placeHolderDict[entity] = r.json()['data']['id']
-    if entJSON['name'] == 'Exaion':
-      print('Assigning EID')
-      eid = r.json()['data']['id']
+    if 'site' in receivedObj:
+      if receivedObj['site'] != None and 'name' in receivedObj['site'] and 'id' in receivedObj['site']:
+        if receivedObj['site']['id'] in siteDict:
+          sDid = receivedObj['site']['id']
+          sTup = siteDict[sDid]
+          sid = sTup[1]
 
-    idx += 1 """
+          if (sTup[0], 'bldgA') not in bldgDict:
+            setupPlaceholderUnderObj(Entity.SITE.value, sid, None)
+
+          if (sTup[0], 'bldgA', 'roomA') not in roomDict:
+            bid = bldgDict[(sTup[0], 'bldgA')][1]
+            setupPlaceholderUnderObj(Entity.BLDG.value, bid, None)
+
+            #Fix incorrect key 
+            correctKey = (sTup[0], 'bldgA', 'roomA')
+            wrongKey = ('bldgA', 'roomA')
+            v = roomDict[wrongKey]
+            roomDict.pop(wrongKey)
+            roomDict[correctKey] = v
+
+
+          if (sTup[0], 'bldgA', 'roomA', 'rackA') not in rackDict:
+            rid = roomDict[(sTup[0], 'bldgA', 'roomA')][1]
+            setupPlaceholderUnderObj(Entity.ROOM.value, rid, None)
+
+            #Fix incorrect key
+            correctKey = (sTup[0], 'bldgA', 'roomA', 'rackA')
+            wrongKey = ('roomA', 'rackA')
+            #v = rackDict[wrongKey]
+            #rackDict.pop(wrongKey)
+            #rackDict[correctKey] = v
+            fixDictKey(correctKey, wrongKey, rackDict)
+
+
+          rTup = rackDict[(sTup[0], 'bldgA', 'roomA', 'rackA')]
+          addedBySite += 1
+          return rTup[1]
+
+    if 'tenant' in receivedObj:
+      if receivedObj['tenant'] != None and 'name' in receivedObj['tenant'] and 'id' in receivedObj['tenant']:
+        if receivedObj['tenant']['id'] in tenantDict:
+          tDid = receivedObj['tenant']['id']
+          tup = tenantDict[tDid]
+          tid = tup[1]
+
+          if (tup[0], 'siteA') not in siteDict:
+            setupPlaceholderUnderObj(Entity.TENANT.value, tid, None)
+
+          if (tup[0], 'siteA', 'bldgA') not in bldgDict:
+            sid = siteDict[(tup[0], 'siteA')][1]
+            setupPlaceholderUnderObj(Entity.SITE.value, sid, None)
+            #Fix incorrect Key
+            correctKey = (tup[0], 'siteA', 'bldgA')
+            wrongKey = ('siteA', 'bldgA')
+            fixDictKey(correctKey, wrongKey, bldgDict)
+
+
+          if (tup[0], 'siteA', 'bldgA', 'roomA') not in roomDict:
+            bid = bldgDict[(tup[0], 'siteA', 'bldgA')][1]
+            setupPlaceholderUnderObj(Entity.BLDG.value, bid, None)
+            #Fix incorrect Key
+            correctKey = (tup[0], 'siteA', 'bldgA', 'roomA')
+            wrongKey = ('bldgA', 'roomA')
+            fixDictKey(correctKey, wrongKey, roomDict)
+
+          if (tup[0], 'siteA', 'bldgA', 'roomA', 'rackA') not in rackDict:
+            rid = roomDict[(tup[0], 'siteA', 'bldgA', 'roomA')][1]
+            setupPlaceholderUnderObj(Entity.ROOM.value, rid, None)
+            #Fix incorrect Key
+            correctKey = (tup[0], 'siteA', 'bldgA', 'roomA', 'rackA')
+            wrongKey = ('roomA', 'rackA')
+            fixDictKey(correctKey, wrongKey, rackDict)
+
+          subTup = rackDict[(tup[0], 'siteA', 'bldgA', 'roomA', 'rackA')]
+          addedByTenant += 1
+          return subTup[1]
+
+
+
+  incorrectDevCount += 1
+
+
 
 def getCorrespondingDict(entityType):
   if entityType == Entity.TENANT.value:
@@ -583,7 +629,7 @@ if args['NBtoken'] != None:
 
 x=0
 #end = Entity.OBJ_TEMPLATE.value
-end = Entity.DEVICE.value
+end = Entity.DEVICE.value+1
 pid = None
 
 while(x < end):
@@ -593,40 +639,49 @@ while(x < end):
     URL = NBURL+"/tenancy/"+entity+"s/"
 
   if x == Entity.SITE.value:
-    URL = NBURL+"/dcim/"+entity+"s/"
+    URL = NBURL+"/dcim/"+entity+"s?limit=0"
     pid = eid
 
   if x == Entity.BLDG.value:
-    URL = NBURL+"/dcim/"+entity+"s/"
+    URL = NBURL+"/dcim/"+entity+"s?limit=0"
 
   if x == Entity.ROOM.value:
-    URL = NBURL+"/dcim/locations/"
+    URL = NBURL+"/dcim/locations?limit=0"
 
   if x == Entity.RACK.value:
+    URL = NBURL+"/dcim/"+entity+"s?limit=0"
+
+  if x == Entity.DEVICE.value:
     URL = NBURL+"/dcim/"+entity+"s?limit=0"
 
 
 
   r = requests.get(URL, headers=dhead)
   if r.status_code == 200:
-    print("Number of "+entity+"s to be added: ", len(r.json()['results']))
+    payload = r.json()['results']
+
+    #Catch any remainder objects in the 'Next' URL
+    while 'next' in r.json() and r.json()['next'] != None:
+      URL = r.json()['next']
+      r = requests.get(URL, headers=dhead)
+      payload += r.json()['results']
+
+
+    print("Number of "+entity+"s to be added: ", len(payload))
 
 
     #Iter thru all objs, assign attrs and post
-    for i in  r.json()['results']:
+    for i in  payload:
       jsonObj = importAssignAttrs(jsonObj, i, x)    
 
       #Get ParentID before posting
-      if x > Entity.TENANT.value:
-        #pid = getCorrespondingArr(x - 1)
-        pid = getPid(x, i)
+      pid = getPid(x, i)
 
       res = postObj(jsonObj['name'], pid, jsonObj, entity)
       if res == False and jsonObj['name'] != 'Exaion':
         sys.exit()
 
-      #getCorrespondingDict(x)[jsonObj['name']] = jsonObj['id']
-      #getCorrespondingArr(x).append((jsonObj['name'], jsonObj['id']))
+      #Exaion is a placeholder which shall be indexed by -1
       if jsonObj['name'] == 'Exaion':
         i['id'] = -1
       
@@ -646,6 +701,9 @@ while(x < end):
 
     prevDict = getCorrespondingDict(x-1)
     currDict = getCorrespondingDict(x)
+    print(entity+'s were not found the Old Database')
+    print('Therefore placeholders will be inserted')
+    print('Adding ',len(prevDict),' placeholder '+entity+'s')
     for i in prevDict:
       setupPlaceholderUnderObj(x-1, str(prevDict[i][1]), None)
 
@@ -668,11 +726,23 @@ while(x < end):
     
 
   print('Successfully added '+entity+'s')
+  print()
   x+=1
 
+
+print('Device Count')
+print('Added using direct parent:', correctDevCount)
+print('Invalid:', incorrectDevCount)
+print('Added using Room: ', addedByRoom)
+print('Added using Bldg: ', addedByBldg)
+print('Added using Site: ', addedBySite)
+print('Added using Tenant: ', addedByTenant)
 sys.exit()
 
 
+
+
+'''
 #GET Devices from Netbox
 deviceJson = {
     "name": None,
@@ -898,5 +968,5 @@ print("Num devices with NULL Rack: ", numRacksNull)
 print("Num devices with nameless Rack: ", numNamelessRacks)
 print("Num devices with unfindable Racks: ", numRackExistButNotFound)
 #writeErrListToFile(deviceErrList)
-
+'''
 
