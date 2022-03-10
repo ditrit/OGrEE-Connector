@@ -164,6 +164,8 @@ def setupPlaceholderUnderObj(entityType,id,did):
   childEnt = entIntToStr(childInt).lower()
 
   entStr = entIntToStr(entityType).lower()
+  if entStr == 'bldg':
+    entStr = 'building'
 
   pRes = requests.get(API+"/"+entStr+"s/"+id, headers=head)
   if pRes.status_code != 200:
@@ -236,11 +238,9 @@ def getPid(entityType, receivedObj):
         if receivedObj['site']['id'] in siteDict:
           #TUP -> (name, ID)
           tup = siteDict[receivedObj['site']['id']]
-          print('TUP1 return site name found')
           return tup[1]
 
         #else site name given but not found
-        print('Site name given but not found')
         sys.exit()
 
     if 'tenant' in receivedObj:
@@ -256,12 +256,10 @@ def getPid(entityType, receivedObj):
           if (tup[0], 'siteA') not in siteDict:
             setupPlaceholderUnderObj(Entity.TENANT.value, tid, tDid)
 
-          subTup = siteDict[[tup[0], 'siteA']]
-          print('SUBTUP1 return tenant name found')
+          subTup = siteDict[(tup[0], 'siteA')]
           return subTup[1]
 
         #else tenant name given but not found
-        print('Tenant name given but not found')
         sys.exit()
 
     else: #Both not present
@@ -272,11 +270,198 @@ def getPid(entityType, receivedObj):
       if (tenantTup[0], 'siteA') not in siteDict:
         setupPlaceholderUnderObj(Entity.TENANT.value, tenantTup[1], -1)
       
-      subTup = siteDict[[tenantTup[0], 'siteA']]
-      print('SUBTUP1 return nothing name found')
+      subTup = siteDict[(tenantTup[0], 'siteA')]
       return subTup[1]
 
   
+  if entityType == Entity.ROOM.value:
+    if 'building' in receivedObj:
+      if receivedObj['building'] != None and 'name' in receivedObj['building'] and 'id' in receivedObj['building']:
+        if receivedObj['building']['id'] in bldgDict:
+          #TUP -> (name, ID)
+          tup = bldgDict[receivedObj['building']['id']]
+          return tup[1]
+
+        #Bldg name given but not found
+        print('Bldg name given but not found')
+        sys.exit()
+
+    if 'site' in receivedObj:
+      if receivedObj['site'] != None and 'name' in receivedObj['site'] and 'id' in receivedObj['site']:
+        if receivedObj['site']['id'] in siteDict:
+          #TUP -> (name, ID)
+          sDid = receivedObj['site']['id']
+          sTup = siteDict[sDid]
+          sid = sTup[1]
+
+          #Check if placeholder is present
+          #otherwise create it
+          if (sTup[0], 'bldgA') not in bldgDict:
+            setupPlaceholderUnderObj(Entity.SITE.value, sid, sDid)
+
+          subTup = bldgDict[(sTup[0], 'bldgA')]
+          return subTup[1]
+
+        #else site name given but not found
+        print('Site name given but not found')
+        sys.exit()
+
+    if 'tenant' in receivedObj:
+      if receivedObj['tenant'] != None and 'name' in receivedObj['tenant'] and 'id' in receivedObj['tenant']:
+        if receivedObj['tenant']['id'] in tenantDict:
+          tDid = receivedObj['tenant']['id']
+          tup = tenantDict[tDid]
+          tid = tup[1]
+
+          if (tup[0], 'siteA') not in siteDict:
+            setupPlaceholderUnderObj(Entity.TENANT.value, tid, did)
+
+          if (tup[0], 'siteA', 'bldgA') not in bldgDict:
+            sup = siteDict[(tup[0], 'siteA')]
+            sid = sup[1]
+            setupPlaceholderUnderObj(Entity.SITE.value, sid, None)
+            
+            #Unwanted key was inserted by function call
+            #let's fix that
+            v = bldgDict[('siteA', 'bldgA')]
+            bldgDict.pop(('siteA', 'bldgA'))
+            bldgDict[(tup[0], 'siteA', 'bldgA')] = v
+
+          subTup = bldgDict[(tup[0], 'siteA', 'bldgA')]
+          return subTup[1]
+
+    else: #No ancestors present so let's use Exaion, index is -1
+      tDid = -1
+      tup = tenantDict[tDid]
+      tid = tup[1]
+
+      if (tup[0], 'siteA') not in siteDict:
+        setupPlaceholderUnderObj(Entity.TENANT.value, tid, None)
+
+      if (tup[0], 'siteA', 'bldgA') not in bldgDict:
+        sup = siteDict[(tup[0], 'siteA')]
+        sid = sup[1]
+        setupPlaceholderUnderObj(Entity.SITE.value, sid, None)
+            
+        #Unwanted key was inserted by function call
+        #let's fix that
+        v = bldgDict[('siteA', 'bldgA')]
+        bldgDict.pop(('siteA', 'bldgA'))
+        bldgDict[(tup[0], 'siteA', 'bldgA')] = v
+
+      subTup = bldgDict[(tup[0], 'siteA', 'bldgA')]
+      return subTup[1]
+
+  if entityType == Entity.RACK.value:
+    if 'location' in receivedObj:
+      if receivedObj['location'] != None and 'name' in receivedObj['location'] and 'id' in receivedObj['location']:
+        if receivedObj['location']['id'] in roomDict:
+          rTup = roomDict[receivedObj['location']['id']]
+          return rTup[1]
+
+    if 'building' in receivedObj:
+      if receivedObj['building'] != None and 'name' in receivedObj['building'] and 'id' in receivedObj['building']:
+        if receivedObj['building']['id'] in bldgDict:
+          bDid = receivedObj['building']['id']
+          bTup = bldgDict[bDid]
+          bid = bTup[1]
+
+          if (bTup[0], 'roomA') not in roomDict:
+            setupPlaceholderUnderObj(Entity.BLDG.value, bid, None)
+
+          subTup = roomDict[(bTup[0], 'roomA')]
+          return subTup[1]
+
+    if 'site' in receivedObj:
+      if receivedObj['site'] != None and 'name' in receivedObj['site'] and 'id' in receivedObj['site']:
+        if receivedObj['site']['id'] in siteDict:
+          sDid = receivedObj['site']['id']
+          sTup = siteDict[sDid]
+          sid = sTup[1]
+
+          if (sTup[0], 'bldgA') not in bldgDict:
+            setupPlaceholderUnderObj(Entity.SITE.value, sid, None)
+
+          if (sTup[0], 'bldgA', 'roomA') not in roomDict:
+            bTup = bldgDict[(sTup[0], 'bldgA')]
+            bid = bTup[1]
+            setupPlaceholderUnderObj(Entity.BLDG.value, bid, None)
+
+            #Unwanted key was inserted at this point
+            #when diff between entityType and found key is 2+
+            v = roomDict[('bldgA', 'roomA')]
+            roomDict.pop(('bldgA', 'roomA'))
+            roomDict[(sTup[0], 'bldgA', 'roomA')] = v
+
+
+          subTup = roomDict[(sTup[0], 'bldgA', 'roomA')]
+          return subTup[1]
+
+    if 'tenant' in receivedObj:
+      if receivedObj['tenant'] != None and 'name' in receivedObj['tenant'] and 'id' in receivedObj['tenant']:
+        if receivedObj['tenant']['id'] in tenantDict:
+          tDid = receivedObj['tenant']['id']
+          tup = tenantDict[tDid]
+          tid = tup[1]
+
+          if (tup[0], 'siteA') not in siteDict:
+            setupPlaceholderUnderObj(Entity.TENANT.value, tid, None)
+
+          if (tup[0], 'siteA', 'bldgA') not in bldgDict:
+            sTup = siteDict[(tup[0], 'siteA')]
+            sid = sTup[1]
+            setupPlaceholderUnderObj(Entity.SITE.value, sid, None)
+
+            #Unwanted key was inserted at this point
+            #when diff between entityType and found key is 2+
+            v = bldgDict[('siteA', 'roomA')]
+            bldgDict.pop(('siteA', 'roomA'))
+            bldgDict[(tup[0], 'bldgA', 'roomA')] = v
+
+          if (tup[0], 'siteA', 'bldgA', 'roomA') not in roomDict:
+            bTup = bldgDict[(tup[0], 'siteA', 'bldgA')]
+            bid = bTup[1]
+            setupPlaceholderUnderObj(Entity.BLDG.value, bid, None)
+
+            #Unwanted key was inserted at this point
+            #when diff between entityType and found key is 2+
+            v = roomDict[('bldgA', 'roomA')]
+            roomDict.pop(('bldgA', 'roomA'))
+            roomDict[(tup[0], 'siteA', 'bldgA', 'roomA')] = v
+
+          rTup = roomDict[(tup[0], 'siteA', 'bldgA', 'roomA')]
+          return rTup[1]
+
+    else: #No valid ancestor present so let's use Exaion
+      tup = tenantDict[-1]
+      tid = tup[1]
+      if (tup[0], 'siteA') not in siteDict:
+        setupPlaceholderUnderObj(Entity.TENANT.value, tid, None)
+
+      if (tup[0], 'siteA', 'bldgA') not in bldgDict:
+        sTup = siteDict[(tup[0], 'siteA')]
+        sid = sTup[1]
+        setupPlaceholderUnderObj(Entity.SITE.value, sid, None)
+
+        #Unwanted key was inserted at this point
+        #when diff between entityType and found key is 2+
+        v = bldgDict[('siteA', 'bldgA')]
+        bldgDict.pop(('siteA', 'bldgA'))
+        bldgDict[(tup[0], 'bldgA', 'roomA')] = v
+
+      if (tup[0], 'siteA', 'bldgA', 'roomA') not in roomDict:
+        bTup = bldgDict[(tup[0], 'siteA', 'bldgA')]
+        bid = bTup[1]
+        setupPlaceholderUnderObj(Entity.BLDG.value, bid, None)
+
+        #Unwanted key was inserted at this point
+        #when diff between entityType and found key is 2+
+        v = roomDict[('bldgA', 'roomA')]
+        roomDict.pop(('bldgA', 'roomA'))
+        roomDict[(tup[0], 'siteA', 'bldgA', 'roomA')] = v
+
+      rTup = roomDict[(tup[0], 'siteA', 'bldgA', 'roomA')]
+      return rTup[1]
 
 
 
@@ -397,7 +582,8 @@ if args['NBtoken'] != None:
 #setupPlaceholders()
 
 x=0
-end = Entity.OBJ_TEMPLATE.value
+#end = Entity.OBJ_TEMPLATE.value
+end = Entity.DEVICE.value
 pid = None
 
 while(x < end):
@@ -417,7 +603,7 @@ while(x < end):
     URL = NBURL+"/dcim/locations/"
 
   if x == Entity.RACK.value:
-    URL = NBURL+"/dcim/"+entity+"s/"
+    URL = NBURL+"/dcim/"+entity+"s?limit=0"
 
 
 
@@ -450,12 +636,13 @@ while(x < end):
   else:
     #This means DCIM API doesn't have obj types
     #so we need to make placeholders
-    '''print(entIntToStr(x))
-    parentInt = x-1
-    pArr = getCorrespondingArr(parentInt)
-    for i in pArr:
-      postObj(jsonObj['name'], i[1], jsonObj, entIntToStr(x).lower())
-      getCorrespondingArr(x).append((jsonObj['name'], jsonObj['id']))'''
+    #Iterate thru prevDict and add 
+    #(prevEntName, PlaceHolderName) : (PlaceHolderName, placeHolderID)
+
+    #Sometimes an ancestor is also a placeholder so it would be 
+    #inserted as:
+    #(AncestorName0,...,AncestorNameN, PlacHolderName) : 
+    # (PlaceHolderName, placeHolderID) 
 
     prevDict = getCorrespondingDict(x-1)
     currDict = getCorrespondingDict(x)
@@ -470,7 +657,7 @@ while(x < end):
         tmp += entIntToStr(x).lower()+"A"
         correctKey = tuple(tmp)
       else:
-        correctKey = (i)
+        correctKey = (prevDict[i][0], entIntToStr(x).lower()+"A")
 
       wrongKey = (prevDict[i][0], entIntToStr(x).lower()+"A")
       
@@ -484,198 +671,6 @@ while(x < end):
   x+=1
 
 sys.exit()
-
-
-
-# Obtain the big list of Sites
-# Store into MDB and add
-# a placeholder bldg to each site
-r = requests.get(NBURL+"/dcim/sites/", headers=dhead)
-print("Number of Sites to be added: ", len(r.json()['results']))
-print("Adding Sites...")
-siteJson = getListFromFile("site")
-x = 0 
-for entry in r.json()['results']:
-
-  siteJson['name'] = entry['name']
-  siteJson['description'] = ["ConnectorImported",entry['description']]
-  siteJson['parentId'] = eid
-  siteJson['domain'] = 'Exaion'
-  siteJson['attributes']['address'] = entry['physical_address']
-  print(x, ": ", entry['name'])
-  x+=1
-  pr = requests.post(API+"/sites",
-   headers=head, data=json.dumps(siteJson) )
-  if pr.status_code != 201:
-    print("Error with site!")
-    print(pr.text)
-    exit()
-
-  siteID = pr.json()['data']
-  print("Adding corresponding building")
-  #bldgJson = {
-  #"name": "BldgA",
-  #"id": None, #API doesn't allow non Server Generated IDs
-  #"parentId": siteID['id'],
-  #"category": "building",
-  #"description": ["ConnectorImported","Some Building"],
-  #"domain": "Exaion",
-  #"attributes": {
-  #  "posXY": "99,99",
-  #  "posXYUnit": "mm",
-  #  "posZ":"99",
-  #  "posZUnit": "mm",
-  #  "size":"99",
-  #  "sizeUnit": "mm",
-  #  "height":"99",
-  #  "heightUnit": "mm",
-  #  "nbFloors":"99"
-  #  }
-  #}
-
-  bldgJson = getListFromFile("bldg")
-  bldgJson["parentId"] = siteID['id']
-  bldgJson["domain"] = "Exaion"
-  bldgJson["description"] = ["ConnectorImported","Some Building"]
-  tmpr = requests.post(API+"/buildings",
-  headers=head, data=json.dumps(bldgJson) )
-  if tmpr.status_code != 201:
-    print("Error while adding bldg!")
-    print(tmpr.text)
-    exit()
-
-  siteNamebldgIDDict[siteID['name']] = tmpr.json()['data']['id']
-  print(bldgJson['name'])
-
-  print("Adding corresponding room")
-  roomJson = getListFromFile("bldg")
-  roomJson["parentId"] = tmpr.json()["data"]["id"]
-  roomJson["domain"] = "Exaion"
-  roomJson["name"] = "RoomA"
-  roomJson["description"] = ["ConnectorImported"]
-  roomJson["attributes"] = {
-    "floorUnit":'m',
-      "posXY": "99,99",
-      "posXYUnit": "mm",
-      "posZ":"99",
-      "posZUnit": "mm",
-      "size":"99",
-      "sizeUnit": "mm",
-      "height":"99",
-      "heightUnit": "mm",
-      "nbFloors":"99",
-      "orientation":"-E-N"
-  }
-
-  tmpr2 = requests.post(API+"/rooms",
-  headers=head, data=json.dumps(roomJson) )
-  if tmpr2.status_code != 201:
-    print("Error while adding room!")
-    print(tmpr2.text)
-    exit()
-
-  bldgIDRoomIDDict[tmpr.json()['data']['id']] = tmpr2.json()['data']['id']
-
-
-
-
-# Obtain the big list of Rooms (Rack-Groups)
-# Store using tenant 'Exaion' and site name
-#r = requests.get(NBURL+"/dcim/rack-groups/",
-# headers=dhead)
-'''r = requests.get(NBURL+"/dcim/racks/",
- headers=dhead)
-x = 0
-for idx in r.json()['results']:
-  print(x, ": ", idx['name'], ": PARENT: ", idx['site']['name'])
-  roomJson = {
-    "id": None,
-    "name": idx['name'],
-    "parentId": bldgIDRoomIDDict[siteNamebldgIDDict[idx['site']['name']]],
-    "category": "room",
-    "domain": "Exaion",
-    "description": [
-        "ConnectorImported"
-    ],
-    "attributes": {
-        "posXY": "{\"x\":10,\"y\":10}",
-        "posXYUnit": "m",
-        "posZ": "10",
-        "posZUnit": "m",
-        "template": "",
-        "orientation": "+N+W",
-        "size": "{\"x\":10,\"y\":10}",
-        "sizeUnit": "m",
-        "height": "10",
-        "heightUnit": "m",
-        "technical": "{\"left\":1.0,\"right\":1.0,\"top\":3.0,\"bottom\":1.0}",
-        "reserved": "{\"left\":2.0,\"right\":2.0,\"top\":2.0,\"bottom\":2.0}"
-    }
-  }
-  tmpr = requests.post(API+"/rooms",
-  headers=head, data=json.dumps(roomJson) )
-  roomNameIDDict[idx['name']] = tmpr.json()['data']['id']
-  x+=1'''
-
-
-# Obtain the big list of Racks
-# store using the room Name & 
-# corresponding ID
-r = requests.get(NBURL+"/dcim/racks/?limit=0",
- headers=dhead)
-totalRacks = r.json()['results']
-print("Number of Racks to be added: ", len(totalRacks))
-print("Adding Racks...")
-x = 0
-for idx in totalRacks:
-  #print(x, ": ", idx['name'])
-  #if idx['group'] == None:
-    #name = 
-    #pid = roomNameIDDict[GetRoomName(idx['site']['name'], 
-    #  siteNamebldgIDDict[idx['site']['name']])]
-  pid = bldgIDRoomIDDict[siteNamebldgIDDict[idx['site']['name']]]
-  name = idx['name']
-  #else:
-  #  print('PROBLEM CASE ENCOUNTERED')
-  #  name = idx['name']
-  #  pid = roomNameIDDict[idx['group']['name']]
-  #print(x, ": ", str(name))
-  rackJson = {
-    "id": None,
-    "name": str(name),
-    "parentId": str(pid),
-    "category": "rack",
-    "domain": "Exaion",
-    "description": [
-      "ConnectorImported"
-    ],
-    "attributes": {
-        "posXY": "{\"x\":10.0,\"y\":0.0}",
-        "posXYUnit": "tile",
-        "posZ": "Some position",
-        "posZUnit": "cm",
-        "template": "Some template",
-        "orientation": "front",
-        "size": "{\"x\":60.0,\"y\":120.0}",
-        "sizeUnit": "cm",
-        "height": str(idx['u_height']),
-        "heightUnit": "U",
-        "vendor": "someVendor",
-        "type": "someType",
-        "model": "someModel",
-        "serial": "someSerial"
-    }
-  }
-  tmpr = requests.post(API+"/racks",
-  headers=head, data=json.dumps(rackJson) )
-  x+=1
-  if 'data' in tmpr.json():
-    if 'id' in tmpr.json()['data']:
-      rackNameIDDict[str(name)] = tmpr.json()['data']['id']
-  else:
-    print('Error with rack: ', str(name))
-    print(tmpr.json()['message'])
-    writeErrListToFile(rackJson, "rack")
 
 
 #GET Devices from Netbox
