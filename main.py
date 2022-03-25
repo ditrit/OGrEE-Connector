@@ -9,13 +9,8 @@ from enum import Enum
 
 
 #COMMAND OPTIONS
-parser = argparse.ArgumentParser(description='Import from Netbox to file .')
-parser.add_argument('--APIurl', 
-                    help="""Specify which API URL to send data""")
-parser.add_argument('--NBURL',
-                    help="""Specify URL of Netbox""")
-parser.add_argument("--APItoken", help="(Optionally) Specify a Bearer token for API")
-parser.add_argument("--NBtoken", help="(Optionally) Specify a Netbox auth token")
+#Will hold all the values necessary for importing
+config = None
 
 #Auth Token
 token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJVc2VySWQiOjYzOTUyMDYyNzE4NDI3MTM2MX0.y34Vd-KPTzDQRowqiPlXE8Nz00TvDv5D3kF838JVBVQ'
@@ -47,14 +42,14 @@ deviceDict = {}
 
 #ENUM Declaration and funcs
 class Entity(Enum):
-    TENANT = 0
-    SITE = 1
-    BLDG = 2
-    ROOM = 3
-    RACK  = 4
-    DEVICE  = 5
-    OBJ_TEMPLATE = 6
-    ROOM_TEMPLATE = 7
+  TENANT = 0
+  SITE = 1
+  BUILDING = 2
+  ROOM = 3
+  RACK  = 4
+  DEVICE  = 5
+  OBJ_TEMPLATE = 6
+  ROOM_TEMPLATE = 7
 
 def entStrToInt(ent):
     return Entity[ent].value
@@ -67,7 +62,7 @@ def entIntToStr(ent):
 def postObj(name, pid, oJSON, obj):
   oJSON['name'] = name
   oJSON['parentId'] = pid
-  r = requests.post(API+"/"+obj+"s", 
+  r = requests.post(config['APIURL']+"/"+obj+"s", 
                                     headers=head, json=oJSON)
   if r.status_code != 201:
     print("Error while creating "+obj+"!")
@@ -95,7 +90,7 @@ def importAssignAttrs(defJson, toImport, entityType):
     defJson['domain'] = 'Exaion'
     defJson['attributes']['address'] = toImport['physical_address']
 
-  elif entityType == Entity.BLDG.value:
+  elif entityType == Entity.BUILDING.value:
     defJson['name'] = toImport['name']
     defJson['description'] = ["ConnectorImported",toImport['description']]
     defJson['domain'] = 'Exaion'
@@ -118,6 +113,55 @@ def importAssignAttrs(defJson, toImport, entityType):
 
   return defJson
 
+def importAssignAttrsNewCustom(defJson, toImport):
+  for key in defJson:
+    idx = defJson[key]
+    if type(idx) is str:
+      arr = idx.split(",")
+      value = recursivelyResolve(toImport, arr, None)
+      defJson[key] = value
+
+    if type(idx) is list: #We will build an array to add
+      arrLenLoc = idx[0]
+      arr = arrLenLoc.split(",")
+      actualLen = len(recursivelyResolve(toImport, arr))
+      value = buildArrJson(actualLen, element, toImport)
+      defJson[key] = value
+
+
+def recursivelyResolve(toImport, arr, iterIdx):
+  if len(arr) > 1:
+    if arr[0] in toImport and toImport[arr[0]] != None:
+      nextJson = toImport[arr[0]]
+      return recursivelyResolve(nextJson, arr[1:])
+
+  if arr[0] == "iter": #Dealing with array
+    arr[0] = iterIdx
+    nextJson = toImport[arr[0]]
+    return recursivelyResolve(nextJson, arr[1:], None)
+
+  if len(arr) == 1:
+    if arr[0] in toImport and toImport[arr[0]] != None:
+      nextJson = toImport[arr[0]]
+      return nextJson
+      
+  return None
+
+def buildArrJson(length, element, toImport):
+  arr = []
+  for i in length:
+    for key in element:
+      elt = element
+      arr = elt[key].split(",")
+      value = recursivelyResolve(toImport, arr, i)
+      elt[key] = value
+
+    arr.append(elt)
+
+  return arr
+
+  print()
+
 #Gets Respective Default JSON
 def getListFromFile(entType):
     filename = "defaultJSON/"+entType+".json"
@@ -125,6 +169,13 @@ def getListFromFile(entType):
         objList = f.read()
 
     return json.loads(objList)
+
+def loadJsonFile(path):
+  filename = path
+  with open(filename) as f:
+    objList = f.read()
+
+  return json.loads(objList)
 
 #Write the unimported objects to file
 def writeErrListToFile(devList, entType):
@@ -143,10 +194,10 @@ def setupPlaceholderUnderObj(entityType,id,did):
   if entStr == 'bldg':
     entStr = 'building'
 
-  pRes = requests.get(API+"/"+entStr+"s/"+id, headers=head)
+  pRes = requests.get(config['APIURL']+"/"+entStr+"s/"+id, headers=head)
   if pRes.status_code != 200:
     print("Error while getting parent for placeholder")
-    print("URL:",API+"/"+entStr+"s/"+id)
+    print("URL:",config['APIURL']+"/"+entStr+"s/"+id)
     print("Entity:", entityType)
     print("ID:", id)
     print("Now exiting")
@@ -213,7 +264,7 @@ def getPid(entityType, receivedObj):
 
         
 
-  if entityType == Entity.BLDG.value:
+  if entityType == Entity.BUILDING.value:
     if 'site' in receivedObj:
       if receivedObj['site']!= None and 'name' in receivedObj['site'] and 'id' in receivedObj['site']:
         if receivedObj['site']['id'] in siteDict:
@@ -326,7 +377,7 @@ def getPid(entityType, receivedObj):
           bid = bTup[1]
 
           if (bTup[0], 'roomA') not in roomDict:
-            setupPlaceholderUnderObj(Entity.BLDG.value, bid, None)
+            setupPlaceholderUnderObj(Entity.BUILDING.value, bid, None)
 
           subTup = roomDict[(bTup[0], 'roomA')]
           return subTup[1]
@@ -344,7 +395,7 @@ def getPid(entityType, receivedObj):
           if (sTup[0], 'bldgA', 'roomA') not in roomDict:
             bTup = bldgDict[(sTup[0], 'bldgA')]
             bid = bTup[1]
-            setupPlaceholderUnderObj(Entity.BLDG.value, bid, None)
+            setupPlaceholderUnderObj(Entity.BUILDING.value, bid, None)
 
             #Unwanted key was inserted at this point
             #when diff between entityType and found key is 2+
@@ -385,7 +436,7 @@ def getPid(entityType, receivedObj):
     if (tup[0], 'siteA', 'bldgA', 'roomA') not in roomDict:
       bTup = bldgDict[(tup[0], 'siteA', 'bldgA')]
       bid = bTup[1]
-      setupPlaceholderUnderObj(Entity.BLDG.value, bid, None)
+      setupPlaceholderUnderObj(Entity.BUILDING.value, bid, None)
 
     #Unwanted key was inserted at this point
     #when diff between entityType and found key is 2+
@@ -439,7 +490,7 @@ def getPid(entityType, receivedObj):
 
           if (sTup[0], 'bldgA', 'roomA') not in roomDict:
             bid = bldgDict[(sTup[0], 'bldgA')][1]
-            setupPlaceholderUnderObj(Entity.BLDG.value, bid, None)
+            setupPlaceholderUnderObj(Entity.BUILDING.value, bid, None)
 
             #Fix incorrect key 
             correctKey = (sTup[0], 'bldgA', 'roomA')
@@ -487,7 +538,7 @@ def getPid(entityType, receivedObj):
 
     if (tup[0], 'siteA', 'bldgA', 'roomA') not in roomDict:
       bid = bldgDict[(tup[0], 'siteA', 'bldgA')][1]
-      setupPlaceholderUnderObj(Entity.BLDG.value, bid, None)
+      setupPlaceholderUnderObj(Entity.BUILDING.value, bid, None)
       #Fix incorrect Key
       correctKey = (tup[0], 'siteA', 'bldgA', 'roomA')
       wrongKey = ('bldgA', 'roomA')
@@ -511,7 +562,7 @@ def getCorrespondingDict(entityType):
     return tenantDict
   elif entityType == Entity.SITE.value:
     return siteDict
-  elif entityType == Entity.BLDG.value:
+  elif entityType == Entity.BUILDING.value:
     return bldgDict
   elif entityType == Entity.ROOM.value:
     return roomDict
@@ -520,29 +571,47 @@ def getCorrespondingDict(entityType):
   elif entityType == Entity.DEVICE.value:
     return deviceDict
 
+def getDefaultURL(entity):
+  if entity == Entity.TENANT.value:
+    return "https://dcim.ogree.ditrit.io/api/tenancy/tenants"
+  
+  ext = entIntToStr(entity).lower()+"s"
+  return "https://dcim.ogree.ditrit.io/api/dcim/"+ext
 
 
 #Parse Args START //////////
-args = vars(parser.parse_args())
-if ('NBURL' not in args or args['NBURL'] == None):
-    print('Netbox URL not specified... using default URL')
-    NBURL = "https://dcim.chibois.net/api"
-else:
-    NBURL = args['NBURL']
+config = loadJsonFile("./config.json")
+if config == None:
+  print('Error, config file not found')
+  print('Now exiting')
+  sys.exit()
 
-if ('APIurl' not in args or args['APIurl'] == None):
+for i in range(Entity.DEVICE.value+1):
+  ent = entIntToStr(i).lower()
+  Ent = ent[0].upper()+ent[1:]
+  if (Ent+'JSONTemplate' not in config or config[Ent+'JSONTemplate'] == None 
+      or config[Ent+'JSONTemplate'] == ""):
+      print(Ent+' Import Template not specified... using default template')
+      config[Ent+'JSONTemplate'] = getListFromFile(ent)
+
+  if (Ent+'ImportUrl' not in config or config[Ent+'ImportUrl'] == None 
+    or config[Ent+'ImportUrl'] == ""):
+    print(Ent+' URL not specified... using default URL')
+    config[Ent+'ImportUrl'] = getDefaultURL(i)
+
+
+if ('APIURL' not in config or config['APIURL'] == None
+     or config['APIURL'] == ""):
     print('API URL not specified... using default URL')
-    API = "https://ogree.chibois.net/api/user"
-else:
-    API = args['APIurl']
+    config['APIURL'] = "https://api.ogree.ditrit.io"
 
 
-if (args['APItoken'] != None):
-  token = args['APItoken']
+if (config['APIKey'] != None):
+  token = config['APIKey']
   head = {'Authorization': 'Bearer {}'.format(token)}
 
-if args['NBtoken'] != None:
-  dcim_token = args['NBtoken']
+if config['ImportKey'] != None:
+  dcim_token = config['ImportKey']
   dhead = {'Authorization': 'Token {}'.format(dcim_token)}
 
 #Parse Args END //////////
@@ -555,27 +624,13 @@ pid = None
 while(x < end):
   entity = (entIntToStr(x)).lower()
   jsonObj = getListFromFile(entity)
-  if x == Entity.TENANT.value:
-    URL = NBURL+"/tenancy/"+entity+"s/"
+  Ent = entity[0].upper()+entity[1:]
+  URL = config[Ent+"ImportUrl"]+"?limit=0"
 
   if x == Entity.SITE.value:
-    URL = NBURL+"/dcim/"+entity+"s?limit=0"
     pid = eid
 
-  if x == Entity.BLDG.value:
-    URL = NBURL+"/dcim/"+entity+"s?limit=0"
-
-  if x == Entity.ROOM.value:
-    URL = NBURL+"/dcim/locations?limit=0"
-
-  if x == Entity.RACK.value:
-    URL = NBURL+"/dcim/"+entity+"s?limit=0"
-
-  if x == Entity.DEVICE.value:
-    URL = NBURL+"/dcim/"+entity+"s?limit=0"
-
-
-
+  print(URL)
   r = requests.get(URL, headers=dhead)
   if r.status_code == 200:
     payload = r.json()['results']
@@ -592,7 +647,12 @@ while(x < end):
 
     #Iter thru all objs, assign attrs and post
     for i in  payload:
-      jsonObj = importAssignAttrs(jsonObj, i, x)    
+      if (Ent+'JSONTemplate' in config and
+         config[Ent+'JSONTemplate'] != None and config[Ent+'JSONTemplate'] != ""):
+         jsonObj = importAssignAttrsNewCustom(loadJsonFile(config[Ent+'JSONTemplate']), i)
+      else:
+        jsonObj = importAssignAttrs(jsonObj, i, x) 
+         
 
       #Get ParentID before posting
       pid = getPid(x, i)
