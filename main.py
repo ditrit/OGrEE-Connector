@@ -113,7 +113,7 @@ def importAssignAttrs(defJson, toImport, entityType):
 
   return defJson
 
-def importAssignAttrsNewCustom(defJson, toImport):
+def importAssignAttrsNewCustom(defJson, toImport, entity):
   for key in defJson:
     idx = defJson[key]
     if type(idx) is str:
@@ -122,11 +122,23 @@ def importAssignAttrsNewCustom(defJson, toImport):
       defJson[key] = value
 
     if type(idx) is list: #We will build an array to add
-      arrLenLoc = idx[0]
-      arr = arrLenLoc.split(",")
-      actualLen = len(recursivelyResolve(toImport, arr))
-      value = buildArrJson(actualLen, element, toImport)
-      defJson[key] = value
+      indicator = idx[0]
+      if indicator == 'manual': #Assign the value directly
+        defJson[key] = idx[1]
+
+      if indicator == 'default': #Retrieve value from default JSON
+        entStr = entIntToStr(entity).lower()
+        defaultJSON = getListFromFile(entStr)
+        defJson[key] = defaultJSON[idx[1]]
+
+      if indicator == 'array':
+        arrLenLoc = idx[1]
+        arr = arrLenLoc.split(",")
+        actualLen = len(recursivelyResolve(toImport, arr, None))
+        value = buildArrJson(actualLen, element, toImport)
+        defJson[key] = value
+
+  return defJson
 
 
 def recursivelyResolve(toImport, arr, iterIdx):
@@ -321,10 +333,10 @@ def getPid(entityType, receivedObj):
 
           #Check if placeholder is present
           #otherwise create it
-          if (sTup[0], 'bldgA') not in bldgDict:
+          if (sTup[0], 'buildingA') not in bldgDict:
             setupPlaceholderUnderObj(Entity.SITE.value, sid, sDid)
 
-          subTup = bldgDict[(sTup[0], 'bldgA')]
+          subTup = bldgDict[(sTup[0], 'buildingA')]
           return subTup[1]
 
         #else site name given but not found
@@ -347,18 +359,18 @@ def getPid(entityType, receivedObj):
     if (tup[0], 'siteA') not in siteDict:
       setupPlaceholderUnderObj(Entity.TENANT.value, tid, did)
 
-    if (tup[0], 'siteA', 'bldgA') not in bldgDict:
+    if (tup[0], 'siteA', 'buildingA') not in bldgDict:
       sup = siteDict[(tup[0], 'siteA')]
       sid = sup[1]
       setupPlaceholderUnderObj(Entity.SITE.value, sid, None)
             
     #Unwanted key was inserted by function call
     #let's fix that
-    v = bldgDict[('siteA', 'bldgA')]
-    bldgDict.pop(('siteA', 'bldgA'))
-    bldgDict[(tup[0], 'siteA', 'bldgA')] = v
+    v = bldgDict[('siteA', 'buildingA')]
+    bldgDict.pop(('siteA', 'buildingA'))
+    bldgDict[(tup[0], 'siteA', 'buildingA')] = v
 
-    subTup = bldgDict[(tup[0], 'siteA', 'bldgA')]
+    subTup = bldgDict[(tup[0], 'siteA', 'buildingA')]
     return subTup[1]
 
 
@@ -389,22 +401,22 @@ def getPid(entityType, receivedObj):
           sTup = siteDict[sDid]
           sid = sTup[1]
 
-          if (sTup[0], 'bldgA') not in bldgDict:
+          if (sTup[0], 'buildingA') not in bldgDict:
             setupPlaceholderUnderObj(Entity.SITE.value, sid, None)
 
-          if (sTup[0], 'bldgA', 'roomA') not in roomDict:
-            bTup = bldgDict[(sTup[0], 'bldgA')]
+          if (sTup[0], 'buildingA', 'roomA') not in roomDict:
+            bTup = bldgDict[(sTup[0], 'buildingA')]
             bid = bTup[1]
             setupPlaceholderUnderObj(Entity.BUILDING.value, bid, None)
 
             #Unwanted key was inserted at this point
             #when diff between entityType and found key is 2+
-            v = roomDict[('bldgA', 'roomA')]
-            roomDict.pop(('bldgA', 'roomA'))
-            roomDict[(sTup[0], 'bldgA', 'roomA')] = v
+            v = roomDict[('buildingA', 'roomA')]
+            roomDict.pop(('buildingA', 'roomA'))
+            roomDict[(sTup[0], 'buildingA', 'roomA')] = v
 
 
-          subTup = roomDict[(sTup[0], 'bldgA', 'roomA')]
+          subTup = roomDict[(sTup[0], 'buildingA', 'roomA')]
           return subTup[1]
 
 
@@ -422,7 +434,7 @@ def getPid(entityType, receivedObj):
     if (tup[0], 'siteA') not in siteDict:
       setupPlaceholderUnderObj(Entity.TENANT.value, tid, None)
 
-    if (tup[0], 'siteA', 'bldgA') not in bldgDict:
+    if (tup[0], 'siteA', 'buildingA') not in bldgDict:
       sTup = siteDict[(tup[0], 'siteA')]
       sid = sTup[1]
       setupPlaceholderUnderObj(Entity.SITE.value, sid, None)
@@ -431,20 +443,20 @@ def getPid(entityType, receivedObj):
     #when diff between entityType and found key is 2+
     v = bldgDict[('siteA', 'roomA')]
     bldgDict.pop(('siteA', 'roomA'))
-    bldgDict[(tup[0], 'bldgA', 'roomA')] = v
+    bldgDict[(tup[0], 'buildingA', 'roomA')] = v
 
-    if (tup[0], 'siteA', 'bldgA', 'roomA') not in roomDict:
-      bTup = bldgDict[(tup[0], 'siteA', 'bldgA')]
+    if (tup[0], 'siteA', 'buildingA', 'roomA') not in roomDict:
+      bTup = bldgDict[(tup[0], 'siteA', 'buildingA')]
       bid = bTup[1]
       setupPlaceholderUnderObj(Entity.BUILDING.value, bid, None)
 
     #Unwanted key was inserted at this point
     #when diff between entityType and found key is 2+
-    v = roomDict[('bldgA', 'roomA')]
-    roomDict.pop(('bldgA', 'roomA'))
-    roomDict[(tup[0], 'siteA', 'bldgA', 'roomA')] = v
+    v = roomDict[('buildingA', 'roomA')]
+    roomDict.pop(('buildingA', 'roomA'))
+    roomDict[(tup[0], 'siteA', 'buildingA', 'roomA')] = v
 
-    rTup = roomDict[(tup[0], 'siteA', 'bldgA', 'roomA')]
+    rTup = roomDict[(tup[0], 'siteA', 'buildingA', 'roomA')]
     return rTup[1]
 
 
@@ -485,30 +497,30 @@ def getPid(entityType, receivedObj):
           sTup = siteDict[sDid]
           sid = sTup[1]
 
-          if (sTup[0], 'bldgA') not in bldgDict:
+          if (sTup[0], 'buildingA') not in bldgDict:
             setupPlaceholderUnderObj(Entity.SITE.value, sid, None)
 
-          if (sTup[0], 'bldgA', 'roomA') not in roomDict:
-            bid = bldgDict[(sTup[0], 'bldgA')][1]
+          if (sTup[0], 'buildingA', 'roomA') not in roomDict:
+            bid = bldgDict[(sTup[0], 'buildingA')][1]
             setupPlaceholderUnderObj(Entity.BUILDING.value, bid, None)
 
             #Fix incorrect key 
-            correctKey = (sTup[0], 'bldgA', 'roomA')
-            wrongKey = ('bldgA', 'roomA')
+            correctKey = (sTup[0], 'buildingA', 'roomA')
+            wrongKey = ('buildingA', 'roomA')
             fixDictKey(correctKey, wrongKey, roomDict)
 
 
-          if (sTup[0], 'bldgA', 'roomA', 'rackA') not in rackDict:
-            rid = roomDict[(sTup[0], 'bldgA', 'roomA')][1]
+          if (sTup[0], 'buildingA', 'roomA', 'rackA') not in rackDict:
+            rid = roomDict[(sTup[0], 'buildingA', 'roomA')][1]
             setupPlaceholderUnderObj(Entity.ROOM.value, rid, None)
 
             #Fix incorrect key
-            correctKey = (sTup[0], 'bldgA', 'roomA', 'rackA')
+            correctKey = (sTup[0], 'buildingA', 'roomA', 'rackA')
             wrongKey = ('roomA', 'rackA')
             fixDictKey(correctKey, wrongKey, rackDict)
 
 
-          rTup = rackDict[(sTup[0], 'bldgA', 'roomA', 'rackA')]
+          rTup = rackDict[(sTup[0], 'buildingA', 'roomA', 'rackA')]
           addedBySite += 1
           return rTup[1]
 
@@ -527,32 +539,32 @@ def getPid(entityType, receivedObj):
     if (tup[0], 'siteA') not in siteDict:
       setupPlaceholderUnderObj(Entity.TENANT.value, tid, None)
 
-    if (tup[0], 'siteA', 'bldgA') not in bldgDict:
+    if (tup[0], 'siteA', 'buildingA') not in bldgDict:
       sid = siteDict[(tup[0], 'siteA')][1]
       setupPlaceholderUnderObj(Entity.SITE.value, sid, None)
       #Fix incorrect Key
-      correctKey = (tup[0], 'siteA', 'bldgA')
-      wrongKey = ('siteA', 'bldgA')
+      correctKey = (tup[0], 'siteA', 'buildingA')
+      wrongKey = ('siteA', 'buildingA')
       fixDictKey(correctKey, wrongKey, bldgDict)
 
 
-    if (tup[0], 'siteA', 'bldgA', 'roomA') not in roomDict:
-      bid = bldgDict[(tup[0], 'siteA', 'bldgA')][1]
+    if (tup[0], 'siteA', 'buildingA', 'roomA') not in roomDict:
+      bid = bldgDict[(tup[0], 'siteA', 'buildingA')][1]
       setupPlaceholderUnderObj(Entity.BUILDING.value, bid, None)
       #Fix incorrect Key
-      correctKey = (tup[0], 'siteA', 'bldgA', 'roomA')
-      wrongKey = ('bldgA', 'roomA')
+      correctKey = (tup[0], 'siteA', 'buildingA', 'roomA')
+      wrongKey = ('buildingA', 'roomA')
       fixDictKey(correctKey, wrongKey, roomDict)
 
-    if (tup[0], 'siteA', 'bldgA', 'roomA', 'rackA') not in rackDict:
-      rid = roomDict[(tup[0], 'siteA', 'bldgA', 'roomA')][1]
+    if (tup[0], 'siteA', 'buildingA', 'roomA', 'rackA') not in rackDict:
+      rid = roomDict[(tup[0], 'siteA', 'buildingA', 'roomA')][1]
       setupPlaceholderUnderObj(Entity.ROOM.value, rid, None)
       #Fix incorrect Key
-      correctKey = (tup[0], 'siteA', 'bldgA', 'roomA', 'rackA')
+      correctKey = (tup[0], 'siteA', 'buildingA', 'roomA', 'rackA')
       wrongKey = ('roomA', 'rackA')
       fixDictKey(correctKey, wrongKey, rackDict)
 
-    subTup = rackDict[(tup[0], 'siteA', 'bldgA', 'roomA', 'rackA')]
+    subTup = rackDict[(tup[0], 'siteA', 'buildingA', 'roomA', 'rackA')]
     addedByTenant += 1
     return subTup[1]
 
@@ -592,7 +604,7 @@ for i in range(Entity.DEVICE.value+1):
   if (Ent+'JSONTemplate' not in config or config[Ent+'JSONTemplate'] == None 
       or config[Ent+'JSONTemplate'] == ""):
       print(Ent+' Import Template not specified... using default template')
-      config[Ent+'JSONTemplate'] = getListFromFile(ent)
+      #config[Ent+'JSONTemplate'] = getListFromFile(ent)
 
   if (Ent+'ImportUrl' not in config or config[Ent+'ImportUrl'] == None 
     or config[Ent+'ImportUrl'] == ""):
@@ -649,14 +661,14 @@ while(x < end):
     for i in  payload:
       if (Ent+'JSONTemplate' in config and
          config[Ent+'JSONTemplate'] != None and config[Ent+'JSONTemplate'] != ""):
-         jsonObj = importAssignAttrsNewCustom(loadJsonFile(config[Ent+'JSONTemplate']), i)
+         template = loadJsonFile(config[Ent+'JSONTemplate'])
+         jsonObj = importAssignAttrsNewCustom(template, i, x)
       else:
         jsonObj = importAssignAttrs(jsonObj, i, x) 
          
 
       #Get ParentID before posting
       pid = getPid(x, i)
-
       res = postObj(jsonObj['name'], pid, jsonObj, entity)
       if res == False and jsonObj['name'] != 'Exaion':
         sys.exit()
@@ -683,6 +695,7 @@ while(x < end):
     currDict = getCorrespondingDict(x)
     print(entity+'s were not found the Old Database')
     print('Therefore placeholders will be inserted')
+    print()
     print('Adding ',len(prevDict),' placeholder '+entity+'s')
     for i in prevDict:
       setupPlaceholderUnderObj(x-1, str(prevDict[i][1]), None)

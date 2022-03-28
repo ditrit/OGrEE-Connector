@@ -1,0 +1,7 @@
+{
+    "name":"name",
+    "description":["manual", []],
+    "category":["manual", "tenant101"],
+    "domain":["manual", "Les-Etoile"],
+    "attributes":["manual", {"color":"FFFFF"}]
+}
