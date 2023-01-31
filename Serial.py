@@ -17,11 +17,8 @@ def ReadEnv(pathToEnvFile: str) -> tuple[str, dict[str, str], str]:
         f = open(pathToEnvFile, "r")
         data = json.load(f)
         url = data["api_url"]
-        token = data["api_token"]
-        headers = {"Authorization": token}
-        database = data["database"]
         f.close()
-        return url, headers, database
+        return url
     else:
         log.error("Cannot find .env.json file in the root")
         sys.exit()
@@ -29,7 +26,7 @@ def ReadEnv(pathToEnvFile: str) -> tuple[str, dict[str, str], str]:
 
 def Serial(location: str):
     pathToEnvFile = f"{os.path.dirname(__file__)}/.env.json"
-    url, headers, database = ReadEnv(pathToEnvFile)
+    url = ReadEnv(pathToEnvFile)
     payload = {
         "columns": [
             {"name": "tiMultiField", "filter": {"contains": location}},
