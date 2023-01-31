@@ -1,5 +1,8 @@
 import os
 import sys
+
+script_dir = os.path.dirname(__file__)
+sys.path.append(script_dir)
 import common.Api as Api
 import logging
 import json
@@ -43,7 +46,7 @@ def Serial(location: str):
     result = Api.PostRequest(
         url, {"Content-Type": "application/json"}, "api/v2/quicksearch/items", payload
     )["searchResults"]["items"]
-    
+
     outPath = f"{os.path.dirname(os.path.realpath(__file__))}/out/"
     with open(f"{outPath}serial.ocli", "w") as newTemplate:
         for item in result:
